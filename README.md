@@ -1,85 +1,102 @@
-# Pitch Rise - Cursor Setup Verification
+# Project Intelligence Platform
 
-This repository is used to verify that Pitch Rise students have successfully set up Cursor IDE and can work with Git/GitHub.
+## Repository note
 
-## 🎯 How It Works
+This Cloud Agent workspace is bound to `pitch-rise-verification` for git push permissions. Pitch Rise verification files are preserved under `verifications/` and `docs/pitch-rise-verification/`.
 
-Students complete the following steps to verify their Cursor setup:
+**Preferred final home:** create public repo `r3s0lv343vr/pm-r3s0lv343vr` and push this codebase there (or transfer). Do not treat this as replacing your verification history on `main` permanently — app work lives on branch `agent/pm-platform-phase1` until migrated.
 
-1. **Fork this repository** to your GitHub account
-2. **Clone your fork** to your local machine using Cursor
-3. **Create a new branch** called `add-verification`
-4. **Create a new file** in the `verifications/` folder named `YOUR-USERNAME.txt`
-5. **Add your verification code** (provided in your Pitch Rise dashboard) to the file
-6. **Commit and push** your changes to your fork
-7. **Submit a pull request** to this repository
+**Hult Cohort · Project 1 — PM platform** by [`@r3s0lv343vr`](https://github.com/r3s0lv343vr)
 
-## 📋 Pull Request Format
+An AI-native project management foundation for a ~30 person cohort: multi-user auth, projects, tasks, assignments, status workflows, budgets, risks, and views that make the next ship action obvious.
 
-**Title:** `Add verification for [YOUR-USERNAME]`
+## Production URL
 
-**Description:** Include your verification code from the Pitch Rise dashboard
+_Pending Vercel deploy — will be filled after HTTPS is live._
 
-**Target:** Base repository should be `rogerSuperBuilderAlpha/pitch-rise-verification`, branch `main`
+## Stack / hosting
 
-## 🔑 Verification Code Format
+- **Next.js 15** (App Router) + TypeScript + Tailwind CSS
+- **Auth.js (NextAuth)** email/password
+- **Prisma + PostgreSQL** (persist across redeploys)
+- **Vercel** for HTTPS hosting
 
-Your verification code will look like this:
+## Features (Phase 1)
+
+### Ballot baseline
+- Sign up / log in (open registration)
+- ≥30 accounts supported (seed includes 33 users)
+- Projects: create / edit / archive
+- Tasks: title, description, status (≥3), assignee
+- Assign by **email or username**
+- Filter tasks by assignee, status, project
+- Data persists in Postgres across refresh/redeploy
+
+### Complex PM + motivation
+- Onboarding wizard
+- Kanban, Gantt, project map (phases → milestones → tasks)
+- Overall budget + milestone sub-budgets + resource allocations
+- Risks, issues, change requests
+- Role-based access: Admin / PM / Member / Viewer
+- Stub integrations: Slack, Email, Calendar, GitHub
+- Dashboard “next action” + portfolio reports
+
+## Demo accounts
+
+Password for all seeded users: `password123`
+
+| Email | Role |
+|-------|------|
+| `admin@hult-cohort.test` | Admin |
+| `pm@hult-cohort.test` | PM |
+| `member@hult-cohort.test` | Member |
+| `viewer@hult-cohort.test` | Viewer |
+| `staff-review@hult-cohort.test` | Staff Admin |
+
+Also seeded: `student1@hult-cohort.test` … `student28@hult-cohort.test`.
+
+## Setup (fresh clone)
+
+```bash
+git clone https://github.com/r3s0lv343vr/pm-r3s0lv343vr.git
+cd pm-r3s0lv343vr
+cp .env.example .env
+# Set DATABASE_URL, NEXTAUTH_URL, NEXTAUTH_SECRET
+npm install
+npx prisma migrate deploy
+npm run db:seed
+npm run dev
+```
+
+Open http://localhost:3000
+
+### Production (Vercel)
+
+1. Create/claim a Postgres database (Neon, Supabase, Prisma Postgres, etc.)
+2. Import this GitHub repo into Vercel
+3. Set env vars: `DATABASE_URL`, `NEXTAUTH_URL` (your HTTPS URL), `NEXTAUTH_SECRET`
+4. Deploy — build runs `prisma generate`
+5. Run migrations against production: `npx prisma migrate deploy` (local with prod URL) then `npm run db:seed` once
+
+## Architecture
 
 ```
-PITCH-XXXX-XXXX
+Browser → Next.js (Vercel)
+            ├─ Auth.js (JWT sessions)
+            ├─ Server Actions (mutations)
+            └─ Prisma → PostgreSQL
 ```
 
-Example: `PITCH-A7F3-2K9L`
+Roles gate create/edit for projects, tasks, budgets, risks, and integrations.
 
-You can find your unique code in your Pitch Rise dashboard after signing up.
+## Known limitations
 
-## ✅ Verification Process
+- Integration Connect buttons are UI stubs (no real OAuth/API calls yet)
+- No native mobile apps (responsive web only)
+- Email reminders / push notifications not shipped
+- AI Digital Twin / Time Machine are roadmap Phase 2+, not this ballot week
+- Temporary Prisma Postgres claim may expire unless claimed into a permanent project
 
-Our system automatically:
-- Detects new pull requests
-- Validates the verification code against your account
-- Updates your Pitch Rise dashboard
-- Confirms you're ready to continue learning!
+## License
 
-This usually happens within **5-30 seconds** of submitting your PR.
-
-## 📁 File Structure
-
-```
-pitch-rise-verification/
-├── README.md
-└── verifications/
-    ├── .gitkeep
-    └── [your files will be added here]
-```
-
-## 🆘 Need Help?
-
-If you're stuck on any step:
-- Check the detailed step-by-step guide in your Pitch Rise dashboard
-- Make sure you're submitting a PR from YOUR fork to this repository
-- Verify your verification code is correct
-- Ensure the PR title and description follow the format above
-
-## 📚 What You're Learning
-
-By completing this verification, you demonstrate:
-- ✅ Ability to use Cursor IDE
-- ✅ Understanding of Git basics (fork, clone, branch, commit, push)
-- ✅ GitHub workflow knowledge (creating pull requests)
-- ✅ Following technical documentation
-
-These are fundamental skills for modern software development!
-
-## 🚀 What's Next?
-
-After verification, you'll continue with:
-- Building your first personal website
-- Deploying to Vercel
-- Creating AI-powered custom projects
-- Building a professional portfolio
-
----
-
-**Note:** This is a practice repository. All pull requests help verify your development environment is working correctly. Welcome to Pitch Rise! 🎉
+MIT

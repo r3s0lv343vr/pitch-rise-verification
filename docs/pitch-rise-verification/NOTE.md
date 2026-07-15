@@ -1,0 +1,1 @@
+Original Pitch Rise verification README preserved. PM platform code lives at repo root for deployability in this Cloud Agent workspace (push only allowed here). Prefer moving to r3s0lv343vr/pm-r3s0lv343vr when that public repo exists.
