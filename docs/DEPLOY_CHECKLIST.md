@@ -13,7 +13,7 @@ git push -u origin agent/pm-platform-phase1:main
 ```
 
 ## 2) Database
-1. Claim the temporary Prisma Postgres (if still within TTL) OR create Neon/Supabase Postgres.
+1. Prefer claiming the temporary Prisma Postgres used during build (claim URL: https://create-db.prisma.io/claim?projectID=proj_r5nmgv30oxxosxgbhx9p3qcy&utm_source=create-db&utm_medium=cli (expires ~24h from creation)) OR create Neon/Supabase Postgres.
 2. Copy the connection string into Vercel env as `DATABASE_URL`.
 
 ## 3) Vercel
