@@ -2,8 +2,7 @@
 
 import Link from "next/link";
 import { signIn } from "next-auth/react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, Suspense, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/form";
 import { Card } from "@/components/ui/card";
@@ -16,30 +15,39 @@ const demos = [
   { email: "staff-review@hult-cohort.test", label: "Staff" },
 ];
 
-function LoginForm() {
-  const router = useRouter();
-  const params = useSearchParams();
+export default function LoginPage() {
   const [email, setEmail] = useState("pm@hult-cohort.test");
   const [password, setPassword] = useState("password123");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function onSubmit(e: FormEvent) {
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    const res = await signIn("credentials", {
-      email,
-      password,
-      redirect: false,
-    });
-    setLoading(false);
-    if (res?.error) {
-      setError("Invalid email or password");
+    try {
+      const res = await signIn("credentials", {
+        email,
+        password,
+        redirect: false,
+        callbackUrl: "/dashboard",
+      });
+      if (!res) {
+        setError("Login service unavailable. Refresh and try again.");
+        return;
+      }
+      if (res.error) {
+        setError("Invalid email or password");
+        return;
+      }
+      window.location.href = "/dashboard";
       return;
+    } catch (err) {
+      console.error(err);
+      setError("Something went wrong during sign-in. Please try again.");
+    } finally {
+      setLoading(false);
     }
-    router.push("/dashboard");
-    router.refresh();
   }
 
   return (
@@ -47,11 +55,6 @@ function LoginForm() {
       <Card className="w-full max-w-md">
         <h1 className="text-xl font-semibold text-white">Log in</h1>
         <p className="mt-1 text-sm text-slate-400">Email + password auth for the cohort PM platform.</p>
-        {params.get("registered") ? (
-          <p className="mt-3 rounded-xl bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">
-            Account created. Sign in to continue.
-          </p>
-        ) : null}
         <form onSubmit={onSubmit} className="mt-5 space-y-3">
           <div>
             <Label htmlFor="email">Email</Label>
@@ -89,7 +92,9 @@ function LoginForm() {
               </button>
             ))}
           </div>
-          <p className="mt-2 text-xs text-slate-500">Demo password: <code>password123</code></p>
+          <p className="mt-2 text-xs text-slate-500">
+            Demo password: <code>password123</code>
+          </p>
         </div>
         <p className="mt-5 text-sm text-slate-400">
           No account?{" "}
@@ -99,13 +104,5 @@ function LoginForm() {
         </p>
       </Card>
     </div>
-  );
-}
-
-export default function LoginPage() {
-  return (
-    <Suspense>
-      <LoginForm />
-    </Suspense>
   );
 }
