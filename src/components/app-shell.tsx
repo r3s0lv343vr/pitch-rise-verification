@@ -19,7 +19,7 @@ import { roleLabel } from "@/lib/permissions";
 import type { Role } from "@prisma/client";
 
 const nav = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/dashboard", label: "Command Center", icon: LayoutDashboard },
   { href: "/my-work", label: "My Work", icon: ListChecks },
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/reports", label: "Reports", icon: BarChart3 },

@@ -71,9 +71,29 @@ async function main() {
     },
   });
 
+  const randall = await prisma.user.create({
+    data: {
+      email: "randall@hult-cohort.test",
+      username: "randall",
+      name: "Randall Chen",
+      passwordHash,
+      role: Role.MEMBER,
+    },
+  });
+
+  const alpha = await prisma.user.create({
+    data: {
+      email: "alpha@hult-cohort.test",
+      username: "alpha",
+      name: "Alpha Rivera",
+      passwordHash,
+      role: Role.MEMBER,
+    },
+  });
+
   // Extra accounts so the roster clearly supports a 30+ cohort
   const cohort = [];
-  for (let i = 1; i <= 28; i++) {
+  for (let i = 1; i <= 26; i++) {
     const u = await prisma.user.create({
       data: {
         email: `student${i}@hult-cohort.test`,
@@ -131,6 +151,8 @@ async function main() {
           { userId: member.id, role: Role.MEMBER },
           { userId: viewer.id, role: Role.VIEWER },
           { userId: staff.id, role: Role.ADMIN },
+          { userId: randall.id, role: Role.MEMBER },
+          { userId: alpha.id, role: Role.MEMBER },
           ...cohort.slice(0, 12).map((u) => ({ userId: u.id, role: Role.MEMBER })),
         ],
       },
@@ -226,7 +248,7 @@ async function main() {
       title: "Project + task CRUD with status workflow",
       description: "todo / in progress / in review / done / blocked",
       status: TaskStatus.IN_PROGRESS,
-      assigneeId: member.id,
+      assigneeId: randall.id,
       creatorId: pm.id,
       startDate: start,
       dueDate: new Date(start.getTime() + 4 * 86400000),
@@ -240,7 +262,7 @@ async function main() {
       title: "Assignment + filters by assignee/status/project",
       description: "Any cohort member by email or username",
       status: TaskStatus.TODO,
-      assigneeId: member.id,
+      assigneeId: alpha.id,
       creatorId: pm.id,
       dueDate: new Date(start.getTime() + 5 * 86400000),
       estimateHours: 8,
@@ -252,8 +274,8 @@ async function main() {
       milestoneId: m2.id,
       title: "Kanban + Gantt + project map views",
       description: "Phases → milestones → tasks → completion",
-      status: TaskStatus.TODO,
-      assigneeId: cohort[0]?.id ?? member.id,
+      status: TaskStatus.IN_REVIEW,
+      assigneeId: member.id,
       creatorId: pm.id,
       dueDate: new Date(start.getTime() + 12 * 86400000),
       estimateHours: 20,
@@ -266,7 +288,7 @@ async function main() {
       title: "Budget burn + milestone sub-budgets",
       description: "Overall budget with per-milestone allocations",
       status: TaskStatus.TODO,
-      assigneeId: pm.id,
+      assigneeId: alpha.id,
       creatorId: admin.id,
       dueDate: new Date(start.getTime() + 13 * 86400000),
       estimateHours: 10,
@@ -279,10 +301,23 @@ async function main() {
       title: "Risk / issue / change request tracking",
       description: "Operator-ready workflow for cohort chaos",
       status: TaskStatus.BLOCKED,
-      assigneeId: pm.id,
+      assigneeId: randall.id,
       creatorId: admin.id,
       dueDate: new Date(start.getTime() + 20 * 86400000),
       estimateHours: 12,
+    },
+  });
+  const t7 = await prisma.task.create({
+    data: {
+      projectId: project.id,
+      milestoneId: m2.id,
+      title: "Process Map Command Center UX",
+      description: "Node-first navigation with owner, deadline, blockers, budget, risks",
+      status: TaskStatus.IN_PROGRESS,
+      assigneeId: pm.id,
+      creatorId: admin.id,
+      dueDate: new Date(start.getTime() + 10 * 86400000),
+      estimateHours: 14,
     },
   });
 
@@ -293,6 +328,7 @@ async function main() {
       { taskId: t4.id, dependsOnId: t3.id },
       { taskId: t5.id, dependsOnId: t3.id },
       { taskId: t6.id, dependsOnId: t4.id },
+      { taskId: t7.id, dependsOnId: t2.id },
     ],
   });
 
@@ -391,7 +427,9 @@ async function main() {
   console.log("- member@hult-cohort.test");
   console.log("- viewer@hult-cohort.test");
   console.log("- staff-review@hult-cohort.test");
-  console.log(`Users total: ${5 + cohort.length}`);
+  console.log("- randall@hult-cohort.test (Team A)");
+  console.log("- alpha@hult-cohort.test (Team Alpha)");
+  console.log(`Users total: ${7 + cohort.length}`);
 }
 
 main()
