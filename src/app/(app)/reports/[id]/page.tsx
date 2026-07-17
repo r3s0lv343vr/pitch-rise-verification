@@ -1,10 +1,9 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/session";
 import { roleLabel } from "@/lib/permissions";
 import { buildReportAnalytics } from "@/lib/report-analytics";
-import { Badge, Card, PageHeader } from "@/components/ui/card";
+import { Badge, Card } from "@/components/ui/card";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { ReportProgressBanner } from "@/components/reports/progress-banner";
 import {
@@ -17,7 +16,8 @@ import { WorkloadWindowPanel } from "@/components/reports/workload-window";
 import { DependencyBottlenecksPanel } from "@/components/reports/dependency-bottlenecks";
 import { ResourceReallocationPanel } from "@/components/reports/resource-reallocation";
 
-export default async function ReportDetailPage({
+/** Tab: Executive Summary — full project report rollup */
+export default async function ReportExecutiveSummaryPage({
   params,
 }: {
   params: Promise<{ id: string }>;
@@ -122,27 +122,6 @@ export default async function ReportDetailPage({
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={project.name}
-        subtitle={`Project report · ${project.status.replaceAll("_", " ")} · click-through from portfolio listings.`}
-        actions={
-          <div className="flex flex-wrap gap-2">
-            <Link
-              href="/reports"
-              className="inline-flex items-center rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800"
-            >
-              ← All reports
-            </Link>
-            <Link
-              href={`/projects/${project.id}`}
-              className="inline-flex items-center rounded-xl bg-cyan-500/20 px-3 py-2 text-sm font-medium text-cyan-100 hover:bg-cyan-500/30"
-            >
-              Open project
-            </Link>
-          </div>
-        }
-      />
-
       <ReportProgressBanner
         progressPct={analytics.progressPct}
         daysRemaining={analytics.daysRemaining}
