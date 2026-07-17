@@ -372,12 +372,14 @@ async function main() {
     });
   }
 
-  // Second sample project
-  await prisma.project.create({
+  // Second sample project with richer PM assignments
+  const project2 = await prisma.project.create({
     data: {
       name: "Project 2 — Comms Platform (preview)",
       description: "Placeholder project for week 3 briefing once PM stack wins.",
       status: ProjectStatus.PLANNING,
+      startDate: start,
+      endDate: end,
       overallBudget: 80000,
       organizationId: org.id,
       ownerId: admin.id,
@@ -385,20 +387,115 @@ async function main() {
         create: [
           { userId: admin.id, role: Role.ADMIN },
           { userId: pm.id, role: Role.PM },
-        ],
-      },
-      tasks: {
-        create: [
-          {
-            title: "Draft comms kickoff brief",
-            description: "Ready for cutover Monday",
-            status: TaskStatus.TODO,
-            assigneeId: pm.id,
-            creatorId: admin.id,
-          },
+          { userId: member.id, role: Role.MEMBER },
         ],
       },
     },
+  });
+
+  const today0 = new Date();
+  today0.setHours(12, 0, 0, 0);
+  const yesterday = new Date(today0);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const inTwoDays = new Date(today0);
+  inTwoDays.setDate(inTwoDays.getDate() + 2);
+  const overdueDay = new Date(today0);
+  overdueDay.setDate(overdueDay.getDate() - 3);
+
+  await prisma.task.createMany({
+    data: [
+      {
+        projectId: project2.id,
+        title: "Draft comms kickoff brief",
+        description: "Ready for cutover Monday",
+        status: TaskStatus.TODO,
+        assigneeId: pm.id,
+        creatorId: admin.id,
+        dueDate: inTwoDays,
+        estimateHours: 3,
+      },
+      {
+        projectId: project2.id,
+        title: "Confirm channel owners with Alex",
+        description: "Waiting on Platform Ops confirmation",
+        status: TaskStatus.IN_REVIEW,
+        assigneeId: pm.id,
+        creatorId: pm.id,
+        dueDate: today0,
+        estimateHours: 1.5,
+      },
+      {
+        projectId: project2.id,
+        title: "Publish stakeholder FAQ draft",
+        description: "Blocked on legal review language",
+        status: TaskStatus.BLOCKED,
+        assigneeId: pm.id,
+        creatorId: pm.id,
+        dueDate: overdueDay,
+        estimateHours: 2,
+      },
+      {
+        projectId: project.id,
+        title: "Weekly delivery standup notes",
+        description: "Capture blockers and next actions for the cohort board",
+        status: TaskStatus.DONE,
+        assigneeId: pm.id,
+        creatorId: pm.id,
+        dueDate: yesterday,
+        estimateHours: 1,
+        startDate: yesterday,
+      },
+      {
+        projectId: project.id,
+        title: "Risk register hygiene check",
+        description: "Close stale mitigations and escalate critical items",
+        status: TaskStatus.TODO,
+        assigneeId: pm.id,
+        creatorId: pm.id,
+        dueDate: today0,
+        estimateHours: 2.5,
+      },
+    ],
+  });
+
+  // Extra today-facing work + break sessions for Personal Overview clock demo
+  const faq = await prisma.task.findFirst({
+    where: { projectId: project2.id, title: "Publish stakeholder FAQ draft" },
+  });
+  const riskHygiene = await prisma.task.findFirst({
+    where: { projectId: project.id, title: "Risk register hygiene check" },
+  });
+
+  await prisma.timeEntry.createMany({
+    data: [
+      {
+        userId: pm.id,
+        projectId: project.id,
+        taskId: riskHygiene?.id ?? discuss?.id,
+        kind: TimeEntryKind.WORK,
+        startedAt: new Date(today0.getTime() - 5 * 3600000),
+        endedAt: new Date(today0.getTime() - 3.2 * 3600000),
+        note: "Morning delivery block",
+      },
+      {
+        userId: pm.id,
+        projectId: project.id,
+        taskId: riskHygiene?.id ?? discuss?.id,
+        kind: TimeEntryKind.BREAK,
+        startedAt: new Date(today0.getTime() - 3.2 * 3600000),
+        endedAt: new Date(today0.getTime() - 2.7 * 3600000),
+        note: "Standup + coffee",
+      },
+      {
+        userId: pm.id,
+        projectId: project2.id,
+        taskId: faq?.id ?? null,
+        kind: TimeEntryKind.WORK,
+        startedAt: new Date(today0.getTime() - 2.5 * 3600000),
+        endedAt: new Date(today0.getTime() - 1.1 * 3600000),
+        note: "Comms platform planning",
+      },
+    ],
   });
 
   console.log("Seed complete.");

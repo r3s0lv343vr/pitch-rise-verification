@@ -1,24 +1,28 @@
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/session";
-import { updateTaskStatusAction } from "@/app/actions";
 import { can } from "@/lib/permissions";
-import { Card, PageHeader, Badge } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Select } from "@/components/ui/form";
-import { formatDate, taskStatusColors, taskStatusLabel } from "@/lib/utils";
-import Link from "next/link";
+import { Card, PageHeader } from "@/components/ui/card";
 import { TimeClock } from "@/components/my-work/time-clock";
 import { DailyBriefBar } from "@/components/my-work/daily-brief";
 import { TaskReminderBoard } from "@/components/my-work/task-reminders";
 import { PersonalProcessListingBar } from "@/components/my-work/priority-process-bar";
+import { AssignmentsPanel } from "@/components/my-work/assignments-panel";
+import { MyWorkTabs } from "@/components/my-work/my-work-tabs";
 import {
   scoreMyWorkTasks,
   summarizeTimeEntries,
   summarizeTodayByProject,
 } from "@/lib/time-tracking";
 
-export default async function MyWorkPage() {
+export default async function MyWorkPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
   const session = await requireSession();
+  const sp = await searchParams;
+  const initialTab = sp.tab === "assignments" ? "assignments" : "overview";
 
   const [tasks, timeEntries, openRisks, memberships] = await Promise.all([
     prisma.task.findMany({
@@ -74,10 +78,8 @@ export default async function MyWorkPage() {
   const workloadHours = ranked.reduce((sum, t) => sum + (t.estimateHours ?? 2.4), 0);
   const scheduleRisks =
     ranked.filter((t) => t.bucket === "attention").length + (openRisks > 0 ? 1 : 0);
-  const budgetOk = true; // personal assignments inherit portfolio budget health unless flagged later
 
   const projects = memberships.map((m) => ({ id: m.projectId, name: m.project.name }));
-  // Include assigned tasks (open + recent done) so clock target is never empty when work exists
   const clockTasks = tasks.map((t) => ({
     id: t.id,
     title: t.title,
@@ -85,13 +87,17 @@ export default async function MyWorkPage() {
     projectName: t.project.name,
   }));
 
-  return (
-    <div className="space-y-4">
-      <PageHeader
-        title="My Work"
-        subtitle="Clock time, daily brief, reminders, and a personal priority process queue."
-      />
+  const assignmentTasks = tasks.map((t) => ({
+    id: t.id,
+    title: t.title,
+    status: t.status,
+    dueDate: t.dueDate,
+    projectId: t.projectId,
+    projectName: t.project.name,
+  }));
 
+  const overview = (
+    <div className="space-y-4">
       <TimeClock
         isClockedIn={!!summary.openWork}
         activeStartedAt={
@@ -121,7 +127,7 @@ export default async function MyWorkPage() {
       <DailyBriefBar
         priority={ranked[0] ?? null}
         workloadHours={workloadHours || 0}
-        budgetOk={budgetOk}
+        budgetOk
         scheduleRisks={scheduleRisks}
       />
 
@@ -161,55 +167,20 @@ export default async function MyWorkPage() {
           </div>
         </Card>
       </div>
+    </div>
+  );
 
-      <Card>
-        <div className="mb-3 text-sm font-medium text-white">All assignments</div>
-        <div className="space-y-3">
-          {tasks.map((task) => {
-            const critical = ranked.find((r) => r.id === task.id)?.critical;
-            return (
-              <div
-                key={task.id}
-                className={
-                  critical
-                    ? "impact-critical rounded-xl border border-rose-400/40 bg-rose-500/5 p-4"
-                    : "rounded-xl border border-slate-800 bg-slate-950/40 p-4"
-                }
-              >
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <div className="font-medium text-white">{task.title}</div>
-                    <Link
-                      href={`/projects/${task.projectId}`}
-                      className="text-sm text-cyan-300 hover:underline"
-                    >
-                      {task.project.name}
-                    </Link>
-                  </div>
-                  <Badge className={taskStatusColors[task.status]}>{taskStatusLabel[task.status]}</Badge>
-                </div>
-                <div className="mt-2 text-xs text-slate-500">Due {formatDate(task.dueDate)}</div>
-                {canEdit ? (
-                  <form action={updateTaskStatusAction} className="mt-3 flex gap-2">
-                    <input type="hidden" name="taskId" value={task.id} />
-                    <Select name="status" defaultValue={task.status} className="max-w-xs">
-                      {Object.keys(taskStatusLabel).map((s) => (
-                        <option key={s} value={s}>
-                          {taskStatusLabel[s]}
-                        </option>
-                      ))}
-                    </Select>
-                    <Button type="submit" size="sm" variant="secondary">
-                      Update
-                    </Button>
-                  </form>
-                ) : null}
-              </div>
-            );
-          })}
-          {tasks.length === 0 ? <p className="text-sm text-slate-500">Nothing assigned yet.</p> : null}
-        </div>
-      </Card>
+  return (
+    <div className="space-y-4">
+      <PageHeader
+        title="My Work"
+        subtitle="Personal Overview for clocking and priorities · Assignments for your ship list."
+      />
+      <MyWorkTabs
+        initialTab={initialTab}
+        overview={overview}
+        assignments={<AssignmentsPanel tasks={assignmentTasks} canEdit={canEdit} />}
+      />
     </div>
   );
 }
