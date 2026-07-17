@@ -149,10 +149,6 @@ export default async function ReportDetailPage({
         totalTasks={analytics.totalTasks}
       />
 
-      <WorkloadWindowPanel workload={analytics.workload} />
-
-      <DependencyBottlenecksPanel bottlenecks={analytics.bottlenecks} />
-
       <div className="grid gap-4 lg:grid-cols-3">
         <Card>
           <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Owner</div>
@@ -219,6 +215,8 @@ export default async function ReportDetailPage({
       <BudgetBreakdownCharts stages={analytics.stages} />
       <TimeChart stages={analytics.stages} />
       <RisksChart stages={analytics.stages} />
+      <WorkloadWindowPanel workload={analytics.workload} />
+      <DependencyBottlenecksPanel bottlenecks={analytics.bottlenecks} />
       <RiskReviewDeck risks={analytics.criticalRisks} />
     </div>
   );
