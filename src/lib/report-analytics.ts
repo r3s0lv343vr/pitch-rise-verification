@@ -113,14 +113,41 @@ export type WorkloadWindow = {
 };
 
 export type BottleneckChainNode =
-  | { kind: "gate"; label: string; detail: string; waitingCount: number; status: string }
-  | { kind: "queue"; label: string; waitingCount: number };
+  | {
+      kind: "gate";
+      label: string;
+      detail: string;
+      waitingCount: number;
+      status: string;
+      impactLine: string;
+    }
+  | { kind: "queue"; label: string; waitingCount: number; impactLine: string };
+
+export type DependencyImpactCard = {
+  label: string;
+  title: string;
+  status: string;
+  waitingCount: number;
+  hoursAtRisk: number;
+  stagesImpacted: string[];
+  downstreamLabels: string[];
+  projectImpact: "Critical" | "High" | "Medium" | "Low";
+  ifUnresolved: string;
+  recommendation: string;
+};
 
 export type DependencyBottlenecks = {
   topLabel: string;
   waitingOnTop: number;
   chain: BottleneckChainNode[];
-  ranked: { label: string; waitingCount: number; status: string; title: string }[];
+  ranked: DependencyImpactCard[];
+  projectImpact: {
+    level: "Critical" | "High" | "Medium" | "Low" | "Clear";
+    tasksAtRisk: number;
+    hoursAtRisk: number;
+    stagesImpacted: string[];
+    summary: string;
+  };
 };
 
 type RiskLike = {
@@ -430,24 +457,28 @@ function gateLabel(title: string, phaseName?: string | null): string {
   return title.length > 28 ? `${title.slice(0, 26)}…` : title;
 }
 
-function transitiveWaitingCount(
+function collectDownstreamIds(
   taskId: string,
   dependentsOf: Map<string, string[]>,
   statusById: Map<string, TaskStatus>,
-  memo = new Map<string, number>(),
-  stack = new Set<string>()
-): number {
-  if (memo.has(taskId)) return memo.get(taskId)!;
-  if (stack.has(taskId)) return 0;
-  stack.add(taskId);
-  let count = 0;
+  seen = new Set<string>()
+): string[] {
+  const out: string[] = [];
   for (const childId of dependentsOf.get(taskId) ?? []) {
-    if (statusById.get(childId) === "DONE") continue;
-    count += 1 + transitiveWaitingCount(childId, dependentsOf, statusById, memo, stack);
+    if (statusById.get(childId) === "DONE" || seen.has(childId)) continue;
+    seen.add(childId);
+    out.push(childId);
+    out.push(...collectDownstreamIds(childId, dependentsOf, statusById, seen));
   }
-  stack.delete(taskId);
-  memo.set(taskId, count);
-  return count;
+  return out;
+}
+
+function impactLevel(waitingCount: number, hoursAtRisk: number, status: string): DependencyImpactCard["projectImpact"] {
+  if (status === "BLOCKED" && waitingCount >= 2) return "Critical";
+  if (waitingCount >= 5 || hoursAtRisk >= 24 || (status === "IN_REVIEW" && waitingCount >= 3)) return "Critical";
+  if (waitingCount >= 3 || hoursAtRisk >= 12 || status === "BLOCKED") return "High";
+  if (waitingCount >= 1 || hoursAtRisk >= 6) return "Medium";
+  return "Low";
 }
 
 export function buildDependencyBottlenecks(tasks: TaskLike[]): DependencyBottlenecks {
@@ -461,7 +492,6 @@ export function buildDependencyBottlenecks(tasks: TaskLike[]): DependencyBottlen
       list.push(task.id);
       dependentsOf.set(dep.dependsOnId, list);
     }
-    // Prefer explicit dependents relation when present
     for (const d of task.dependents ?? []) {
       const list = dependentsOf.get(task.id) ?? [];
       if (!list.includes(d.taskId)) list.push(d.taskId);
@@ -472,27 +502,79 @@ export function buildDependencyBottlenecks(tasks: TaskLike[]): DependencyBottlen
   const scored = tasks
     .filter((t) => t.status !== "DONE")
     .map((t) => {
-      const waitingCount = transitiveWaitingCount(t.id, dependentsOf, statusById);
+      const downstreamIds = collectDownstreamIds(t.id, dependentsOf, statusById);
+      const waitingCount = downstreamIds.length;
       const directWaiting = (dependentsOf.get(t.id) ?? []).filter((id) => statusById.get(id) !== "DONE").length;
-      let score = waitingCount * 10 + directWaiting * 6;
+      const downstreamTasks = downstreamIds
+        .map((id) => taskById.get(id))
+        .filter((x): x is TaskLike => !!x);
+      const hoursAtRisk = Math.round(
+        downstreamTasks.reduce((sum, d) => sum + (d.estimateHours ?? 4), 0) * 10
+      ) / 10;
+      const stagesImpacted = [
+        ...new Set(
+          downstreamTasks.map((d) =>
+            d.milestone?.phase
+              ? stageForProcess(d.milestone.phase.name, d.milestone.phase.order)
+              : gateLabel(d.title, d.milestone?.phase?.name)
+          )
+        ),
+      ];
+      const downstreamLabels = [
+        ...new Set(downstreamTasks.map((d) => gateLabel(d.title, d.milestone?.phase?.name))),
+      ].slice(0, 4);
+      const level = impactLevel(waitingCount, hoursAtRisk, t.status);
+      const label = gateLabel(t.title, t.milestone?.phase?.name);
+
+      let score = waitingCount * 10 + directWaiting * 6 + hoursAtRisk;
       if (t.status === "IN_REVIEW") score += 25;
       if (t.status === "BLOCKED") score += 30;
       if (t.status === "IN_PROGRESS") score += 8;
+      if (level === "Critical") score += 20;
+
+      const ifUnresolved =
+        waitingCount === 0
+          ? `“${label}” is open but not yet blocking other tasks — resolve before downstream work is queued.`
+          : `If “${label}” stays unresolved, ${waitingCount} downstream task${
+              waitingCount === 1 ? "" : "s"
+            } (${hoursAtRisk}h) stall${downstreamLabels.length ? ` across ${downstreamLabels.join(" → ")}` : ""}.`;
+
+      const recommendation =
+        t.status === "BLOCKED"
+          ? "Clear the blocker first — this gate is already red and cascading delay into later stages."
+          : t.status === "IN_REVIEW"
+            ? "Chase reviewer decision today; approval gates amplify schedule risk the longer they sit."
+            : waitingCount >= 3
+              ? "Treat as critical path: finish or re-sequence this gate before starting non-dependent work."
+              : "Keep a named owner and next checkpoint so this does not become a silent delay.";
+
       return {
         task: t,
-        waitingCount: Math.max(waitingCount, directWaiting),
+        waitingCount,
         directWaiting,
+        hoursAtRisk,
+        stagesImpacted,
+        downstreamLabels,
+        level,
         score,
-        label: gateLabel(t.title, t.milestone?.phase?.name),
+        label,
+        ifUnresolved,
+        recommendation,
       };
     })
     .sort((a, b) => b.score - a.score || b.waitingCount - a.waitingCount);
 
-  const ranked = scored.slice(0, 5).map((s) => ({
+  const ranked: DependencyImpactCard[] = scored.slice(0, 5).map((s) => ({
     label: s.label,
-    waitingCount: s.waitingCount,
-    status: s.task.status,
     title: s.task.title,
+    status: s.task.status,
+    waitingCount: s.waitingCount,
+    hoursAtRisk: s.hoursAtRisk,
+    stagesImpacted: s.stagesImpacted,
+    downstreamLabels: s.downstreamLabels,
+    projectImpact: s.level,
+    ifUnresolved: s.ifUnresolved,
+    recommendation: s.recommendation,
   }));
 
   const top = scored[0];
@@ -502,10 +584,58 @@ export function buildDependencyBottlenecks(tasks: TaskLike[]): DependencyBottlen
       waitingOnTop: 0,
       chain: [],
       ranked: [],
+      projectImpact: {
+        level: "Clear",
+        tasksAtRisk: 0,
+        hoursAtRisk: 0,
+        stagesImpacted: [],
+        summary: "No unresolved dependency gates are currently cascading into downstream work.",
+      },
     };
   }
 
-  // Walk heaviest downstream path to form a readable bottleneck chain
+  // Unique downstream at risk across top bottlenecks (project-level)
+  const atRiskIds = new Set<string>();
+  for (const s of scored.slice(0, 3)) {
+    for (const id of collectDownstreamIds(s.task.id, dependentsOf, statusById)) atRiskIds.add(id);
+  }
+  const atRiskTasks = [...atRiskIds].map((id) => taskById.get(id)).filter((t): t is TaskLike => !!t);
+  const hoursAtRisk =
+    Math.round(atRiskTasks.reduce((sum, t) => sum + (t.estimateHours ?? 4), 0) * 10) / 10;
+  const stagesImpacted = [
+    ...new Set(
+      atRiskTasks.map((t) =>
+        t.milestone?.phase
+          ? stageForProcess(t.milestone.phase.name, t.milestone.phase.order)
+          : gateLabel(t.title, null)
+      )
+    ),
+  ];
+  const projectLevel =
+    ranked.some((r) => r.projectImpact === "Critical") || atRiskIds.size >= 5
+      ? "Critical"
+      : ranked.some((r) => r.projectImpact === "High") || atRiskIds.size >= 3
+        ? "High"
+        : atRiskIds.size >= 1
+          ? "Medium"
+          : "Low";
+
+  const projectImpact = {
+    level: projectLevel as DependencyBottlenecks["projectImpact"]["level"],
+    tasksAtRisk: atRiskIds.size,
+    hoursAtRisk,
+    stagesImpacted,
+    summary:
+      atRiskIds.size === 0
+        ? `Top unresolved area is “${top.label}” — limited downstream cascade so far, but it sits on the critical path.`
+        : `Unresolved “${top.label}” (and related gates) put ${atRiskIds.size} downstream task${
+            atRiskIds.size === 1 ? "" : "s"
+          } / ${hoursAtRisk}h at risk${
+            stagesImpacted.length ? ` in ${stagesImpacted.join(", ")}` : ""
+          }. Delivery slip grows while these stay open.`,
+  };
+
+  // Walk heaviest downstream path for cascade visualization
   const chainTasks: TaskLike[] = [top.task];
   let cursor = top.task.id;
   const seen = new Set<string>([cursor]);
@@ -516,8 +646,8 @@ export function buildDependencyBottlenecks(tasks: TaskLike[]): DependencyBottlen
     if (!children.length) break;
     children.sort(
       (a, b) =>
-        transitiveWaitingCount(b.id, dependentsOf, statusById) -
-        transitiveWaitingCount(a.id, dependentsOf, statusById)
+        collectDownstreamIds(b.id, dependentsOf, statusById).length -
+        collectDownstreamIds(a.id, dependentsOf, statusById).length
     );
     const next = children[0];
     chainTasks.push(next);
@@ -525,7 +655,6 @@ export function buildDependencyBottlenecks(tasks: TaskLike[]): DependencyBottlen
     cursor = next.id;
   }
 
-  // Ensure late-stage gates appear when present in open work
   const ensureLabels = ["Build Phase", "Deployment", "Client Signoff"];
   for (const label of ensureLabels) {
     if (chainTasks.some((t) => gateLabel(t.title, t.milestone?.phase?.name) === label)) continue;
@@ -538,28 +667,43 @@ export function buildDependencyBottlenecks(tasks: TaskLike[]): DependencyBottlen
 
   const chain: BottleneckChainNode[] = [];
   chainTasks.forEach((task, idx) => {
-    const waitingCount = transitiveWaitingCount(task.id, dependentsOf, statusById);
+    const waitingCount = collectDownstreamIds(task.id, dependentsOf, statusById).length;
     const directWaiting = (dependentsOf.get(task.id) ?? []).filter((id) => statusById.get(id) !== "DONE").length;
     const label = gateLabel(task.title, task.milestone?.phase?.name);
+    const wait = Math.max(waitingCount, directWaiting);
+    const downstreamLabels = [
+      ...new Set(
+        collectDownstreamIds(task.id, dependentsOf, statusById)
+          .map((id) => taskById.get(id))
+          .filter((t): t is TaskLike => !!t)
+          .map((t) => gateLabel(t.title, t.milestone?.phase?.name))
+      ),
+    ].slice(0, 3);
+
     chain.push({
       kind: "gate",
       label,
       detail: task.title,
-      waitingCount: Math.max(waitingCount, directWaiting),
+      waitingCount: wait,
       status: task.status,
+      impactLine:
+        wait > 0
+          ? `Unresolved → stalls ${wait} downstream${
+              downstreamLabels.length ? ` (${downstreamLabels.join(", ")})` : ""
+            }`
+          : "On path — limited cascade until dependents queue up",
     });
-    if (idx === 0 && Math.max(waitingCount, directWaiting) > 0) {
+
+    if (idx === 0 && wait > 0) {
       chain.push({
         kind: "queue",
-        label: `${Math.max(waitingCount, directWaiting)} task${
-          Math.max(waitingCount, directWaiting) === 1 ? "" : "s"
-        } waiting`,
-        waitingCount: Math.max(waitingCount, directWaiting),
+        label: `${wait} task${wait === 1 ? "" : "s"} waiting`,
+        waitingCount: wait,
+        impactLine: `These cannot finish until “${label}” clears`,
       });
     }
   });
 
-  // Deduplicate consecutive identical gate labels
   const deduped: BottleneckChainNode[] = [];
   for (const node of chain) {
     const prev = deduped[deduped.length - 1];
@@ -572,5 +716,6 @@ export function buildDependencyBottlenecks(tasks: TaskLike[]): DependencyBottlen
     waitingOnTop: top.waitingCount,
     chain: deduped.slice(0, 7),
     ranked,
+    projectImpact,
   };
 }
