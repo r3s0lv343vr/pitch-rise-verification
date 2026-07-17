@@ -88,12 +88,14 @@ export function CommandCenter({
 
   return (
     <div className="flex min-h-[calc(100vh-4.25rem)] flex-col">
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 pb-2">
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-3 border-b border-slate-800/80 pb-3">
         <div className="min-w-0">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
-            Command Center
-          </div>
-          <div className="mt-1 flex flex-wrap gap-1">
+          <h1 className="font-display text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+            <span className="bg-gradient-to-r from-white via-cyan-100 to-cyan-300 bg-clip-text text-transparent">
+              Command Center
+            </span>
+          </h1>
+          <div className="mt-2.5 flex flex-wrap gap-1.5">
             {commandCenterTabs.map((t) => (
               <button
                 key={t.id}
