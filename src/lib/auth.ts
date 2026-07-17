@@ -68,6 +68,19 @@ export const authOptions: NextAuthOptions = {
         token.id = user.id;
         token.role = user.role;
         token.username = user.username;
+        return token;
+      }
+
+      // After DB reseed, JWT ids go stale — re-bind from email so My Work assignments still load.
+      const email = typeof token.email === "string" ? token.email.toLowerCase() : null;
+      if (email) {
+        const dbUser = await prisma.user.findUnique({ where: { email } });
+        if (dbUser) {
+          token.id = dbUser.id;
+          token.role = dbUser.role;
+          token.username = dbUser.username;
+          token.name = dbUser.name;
+        }
       }
       return token;
     },
@@ -76,6 +89,7 @@ export const authOptions: NextAuthOptions = {
         session.user.id = token.id;
         session.user.role = token.role;
         session.user.username = token.username;
+        if (typeof token.name === "string") session.user.name = token.name;
       }
       return session;
     },

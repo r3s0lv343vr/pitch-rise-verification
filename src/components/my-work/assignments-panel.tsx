@@ -9,7 +9,7 @@ type AssignmentTask = {
   id: string;
   title: string;
   status: string;
-  dueDate: Date | string | null;
+  dueDate: string | null;
   projectId: string;
   projectName: string;
 };
