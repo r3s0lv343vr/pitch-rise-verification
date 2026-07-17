@@ -89,6 +89,16 @@ type TaskLike = {
   } | null;
 };
 
+export type WorkloadPerson = {
+  name: string;
+  openTasks: number;
+  openHours: number;
+  capacityHours: number;
+  utilizationPct: number;
+  level: "Overloaded" | "Watch" | "Available";
+  reason: string;
+};
+
 export type WorkloadWindow = {
   completionPct: number;
   averageDelayDays: number;
@@ -96,7 +106,9 @@ export type WorkloadWindow = {
   blockedTasks: number;
   hoursLogged: number;
   openEstimateHours: number;
-  overloadPeople: { name: string; openTasks: number; openHours: number }[];
+  overloadPeople: WorkloadPerson[];
+  teamLoad: WorkloadPerson[];
+  capacityHoursPerPerson: number;
   pressureLabel: "Balanced" | "Watch" | "Overloaded";
 };
 
@@ -332,6 +344,7 @@ export function buildWorkloadWindow(input: {
         10
     ) / 10;
 
+  const CAPACITY_HOURS = 20; // project open-work capacity per person (2.5 day stretch)
   const byPerson = new Map<string, { name: string; openTasks: number; openHours: number }>();
   let openEstimateHours = 0;
   for (const task of input.tasks) {
@@ -346,19 +359,43 @@ export function buildWorkloadWindow(input: {
     byPerson.set(person.id, row);
   }
 
-  const overloadPeople = [...byPerson.values()]
-    .filter((p) => p.openHours >= 18 || p.openTasks >= 4)
-    .sort((a, b) => b.openHours - a.openHours)
-    .slice(0, 4)
-    .map((p) => ({
-      ...p,
-      openHours: Math.round(p.openHours * 10) / 10,
-    }));
+  const teamLoad: WorkloadPerson[] = [...byPerson.values()]
+    .map((p) => {
+      const openHours = Math.round(p.openHours * 10) / 10;
+      const utilizationPct = clamp((openHours / CAPACITY_HOURS) * 100, 0, 200);
+      let level: WorkloadPerson["level"] = "Available";
+      let reason = "Within capacity — room to take more work.";
+      if (openHours >= CAPACITY_HOURS || p.openTasks >= 5) {
+        level = "Overloaded";
+        reason =
+          openHours >= CAPACITY_HOURS
+            ? `Open load ${openHours}h exceeds ${CAPACITY_HOURS}h capacity.`
+            : `${p.openTasks} open tasks is above the safe handoff limit (5).`;
+      } else if (openHours >= CAPACITY_HOURS * 0.75 || p.openTasks >= 3) {
+        level = "Watch";
+        reason =
+          openHours >= CAPACITY_HOURS * 0.75
+            ? `Approaching capacity (${openHours}h of ${CAPACITY_HOURS}h).`
+            : `${p.openTasks} open tasks — monitor before assigning more.`;
+      }
+      return {
+        name: p.name,
+        openTasks: p.openTasks,
+        openHours,
+        capacityHours: CAPACITY_HOURS,
+        utilizationPct,
+        level,
+        reason,
+      };
+    })
+    .sort((a, b) => b.utilizationPct - a.utilizationPct || b.openHours - a.openHours);
+
+  const overloadPeople = teamLoad.filter((p) => p.level === "Overloaded").slice(0, 6);
 
   const pressureLabel: WorkloadWindow["pressureLabel"] =
     blockedTasks >= 3 || overloadPeople.length >= 2 || averageDelayDays >= 5
       ? "Overloaded"
-      : blockedTasks >= 1 || overloadPeople.length >= 1 || averageDelayDays >= 2
+      : blockedTasks >= 1 || overloadPeople.length >= 1 || teamLoad.some((p) => p.level === "Watch") || averageDelayDays >= 2
         ? "Watch"
         : "Balanced";
 
@@ -370,6 +407,8 @@ export function buildWorkloadWindow(input: {
     hoursLogged,
     openEstimateHours: Math.round(openEstimateHours * 10) / 10,
     overloadPeople,
+    teamLoad: teamLoad.slice(0, 8),
+    capacityHoursPerPerson: CAPACITY_HOURS,
     pressureLabel,
   };
 }
