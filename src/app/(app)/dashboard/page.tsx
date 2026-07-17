@@ -1,11 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/session";
 import { can } from "@/lib/permissions";
-import { Card, PageHeader, Badge } from "@/components/ui/card";
+import { PageHeader } from "@/components/ui/card";
 import { CommandCenter } from "@/components/command-center/command-center";
 import type { LinkedTaskNode } from "@/lib/command-center-types";
-import { formatCurrency } from "@/lib/utils";
-import { AlertTriangle } from "lucide-react";
 import Link from "next/link";
 
 function teamFor(name?: string | null, username?: string | null) {
@@ -36,14 +34,16 @@ export default async function DashboardPage({
   const session = await requireSession();
   const sp = await searchParams;
   const initialTab =
-    sp.tab === "kanban" || sp.tab === "gantt" || sp.tab === "process" ? sp.tab : "process";
+    sp.tab === "kanban" || sp.tab === "gantt" || sp.tab === "process" || sp.tab === "main"
+      ? sp.tab
+      : "main";
 
-  const [projects, tasks, openRisks, usersCount] = await Promise.all([
+  const [projects, tasks, openRisks, usersCount, doneTasks, totalTasks, myTasks] = await Promise.all([
     prisma.project.findMany({
       where: { archived: false },
       include: { _count: { select: { tasks: true } } },
       orderBy: { updatedAt: "desc" },
-      take: 6,
+      take: 8,
     }),
     prisma.task.findMany({
       where: {
@@ -67,10 +67,20 @@ export default async function DashboardPage({
     }),
     prisma.risk.count({ where: { status: { not: "closed" } } }),
     prisma.user.count(),
+    prisma.task.count({ where: { status: "DONE" } }),
+    prisma.task.count(),
+    prisma.task.findMany({
+      where: { assigneeId: session.user.id, status: { not: "DONE" } },
+      include: { project: true },
+      orderBy: { dueDate: "asc" },
+      take: 1,
+    }),
   ]);
 
   const budget = projects.reduce((sum, p) => sum + p.overallBudget, 0);
   const canEdit = can(session.user.role, "task:edit");
+  const progressPct = totalTasks === 0 ? 0 : Math.round((doneTasks / totalTasks) * 100);
+  const next = myTasks[0] ?? null;
 
   const nodes: LinkedTaskNode[] = tasks.map((task) => {
     const milestoneBudget =
@@ -131,10 +141,10 @@ export default async function DashboardPage({
   });
 
   return (
-    <div>
+    <div className="flex min-h-[calc(100vh-5.5rem)] flex-col">
       <PageHeader
         title="Command Center"
-        subtitle="Linked Process Map, Kanban, and Gantt+Calendar — one status model driving every view."
+        subtitle="Hamburger navigation frees the canvas. Main, Process Map, Kanban, and Gantt each fill their own tab."
         actions={
           <Link
             href="/projects"
@@ -145,52 +155,29 @@ export default async function DashboardPage({
         }
       />
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Card>
-          <div className="text-xs uppercase tracking-wide text-slate-500">Active projects</div>
-          <div className="mt-2 text-3xl font-semibold text-white">{projects.length}</div>
-        </Card>
-        <Card>
-          <div className="text-xs uppercase tracking-wide text-slate-500">Portfolio budget</div>
-          <div className="mt-2 text-3xl font-semibold text-white">{formatCurrency(budget)}</div>
-        </Card>
-        <Card>
-          <div className="text-xs uppercase tracking-wide text-slate-500">Open risks</div>
-          <div className="mt-2 flex items-center gap-2 text-3xl font-semibold text-white">
-            <AlertTriangle className="h-6 w-6 text-amber-300" /> {openRisks}
-          </div>
-        </Card>
-        <Card>
-          <div className="text-xs uppercase tracking-wide text-slate-500">Process nodes</div>
-          <div className="mt-2 text-3xl font-semibold text-white">{nodes.length}</div>
-          <p className="mt-1 text-xs text-slate-500">{usersCount} accounts</p>
-        </Card>
+      <div className="min-h-0 flex-1">
+        <CommandCenter
+          initialNodes={nodes}
+          canEdit={canEdit}
+          initialTab={initialTab}
+          overview={{
+            activeProjects: projects.length,
+            portfolioBudget: budget,
+            openRisks,
+            processNodes: nodes.length,
+            accounts: usersCount,
+            progressPct,
+            nextActionTitle: next?.title ?? null,
+            nextActionProject: next?.project.name ?? null,
+            nextActionProjectId: next?.projectId ?? null,
+            projects: projects.map((p) => ({
+              id: p.id,
+              name: p.name,
+              taskCount: p._count.tasks,
+            })),
+          }}
+        />
       </div>
-
-      <CommandCenter initialNodes={nodes} canEdit={canEdit} initialTab={initialTab} />
-
-      <Card className="mt-6">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-medium text-white">Projects (supporting)</h2>
-          <Badge className="bg-slate-800 text-slate-300">create = process map shaped</Badge>
-        </div>
-        <p className="mb-3 text-sm text-slate-400">
-          Creating a project seeds a full flowchart template (gates, loops, team lanes) so the Process Map
-          appears shaped immediately.
-        </p>
-        <div className="grid gap-2 md:grid-cols-2">
-          {projects.map((p) => (
-            <Link
-              key={p.id}
-              href={`/dashboard?project=${p.id}&tab=process`}
-              className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm hover:border-cyan-500/30"
-            >
-              <div className="font-medium text-white">{p.name}</div>
-              <div className="text-xs text-slate-500">{p._count.tasks} process nodes</div>
-            </Link>
-          ))}
-        </div>
-      </Card>
     </div>
   );
 }
