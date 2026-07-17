@@ -24,6 +24,66 @@ export function formatHours(minutes: number) {
   return `${Math.round(h * 10) / 10}h`;
 }
 
+/** HH:MM:SS for live clock / session timers */
+export function formatClock(totalMinutes: number) {
+  const totalSeconds = Math.max(0, Math.floor(totalMinutes * 60));
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  return [h, m, s].map((n) => String(n).padStart(2, "0")).join(":");
+}
+
+export type DayProjectRow = {
+  projectId: string;
+  name: string;
+  workMinutes: number;
+  breakMinutes: number;
+};
+
+/** Worked time today, broken down per project. */
+export function summarizeTodayByProject(
+  entries: TimeEntryLike[],
+  projectNames: Record<string, string>,
+  now = new Date()
+) {
+  const dayStart = new Date(now);
+  dayStart.setHours(0, 0, 0, 0);
+  const dayEnd = new Date(dayStart);
+  dayEnd.setDate(dayEnd.getDate() + 1);
+
+  const byProject = new Map<string, { work: number; break: number }>();
+  let workMinutes = 0;
+  let breakMinutes = 0;
+
+  for (const entry of entries) {
+    const start = asDate(entry.startedAt);
+    const end = entry.endedAt ? asDate(entry.endedAt) : now;
+    // overlap of entry with today
+    const overlapStart = Math.max(start.getTime(), dayStart.getTime());
+    const overlapEnd = Math.min(end.getTime(), dayEnd.getTime());
+    if (overlapEnd <= overlapStart) continue;
+    const mins = (overlapEnd - overlapStart) / 60000;
+    if (entry.kind === "WORK") workMinutes += mins;
+    else breakMinutes += mins;
+    if (!entry.projectId) continue;
+    const cur = byProject.get(entry.projectId) ?? { work: 0, break: 0 };
+    if (entry.kind === "WORK") cur.work += mins;
+    else cur.break += mins;
+    byProject.set(entry.projectId, cur);
+  }
+
+  const rows: DayProjectRow[] = Array.from(byProject.entries())
+    .map(([projectId, stats]) => ({
+      projectId,
+      name: projectNames[projectId] || "Project",
+      workMinutes: stats.work,
+      breakMinutes: stats.break,
+    }))
+    .sort((a, b) => b.workMinutes - a.workMinutes);
+
+  return { workMinutes, breakMinutes, rows };
+}
+
 export function summarizeTimeEntries(entries: TimeEntryLike[], now = new Date()) {
   let workMinutes = 0;
   let breakMinutes = 0;

@@ -11,12 +11,16 @@ import { TimeClock } from "@/components/my-work/time-clock";
 import { DailyBriefBar } from "@/components/my-work/daily-brief";
 import { TaskReminderBoard } from "@/components/my-work/task-reminders";
 import { PersonalProcessListingBar } from "@/components/my-work/priority-process-bar";
-import { scoreMyWorkTasks, summarizeTimeEntries } from "@/lib/time-tracking";
+import {
+  scoreMyWorkTasks,
+  summarizeTimeEntries,
+  summarizeTodayByProject,
+} from "@/lib/time-tracking";
 
 export default async function MyWorkPage() {
   const session = await requireSession();
 
-  const [tasks, timeEntries, openRisks] = await Promise.all([
+  const [tasks, timeEntries, openRisks, memberships] = await Promise.all([
     prisma.task.findMany({
       where: { assigneeId: session.user.id },
       include: {
@@ -28,14 +32,20 @@ export default async function MyWorkPage() {
     }),
     prisma.timeEntry.findMany({
       where: { userId: session.user.id },
+      include: { project: true },
       orderBy: { startedAt: "desc" },
-      take: 200,
+      take: 400,
     }),
     prisma.risk.count({
       where: {
         status: { not: "closed" },
         project: { members: { some: { userId: session.user.id } } },
       },
+    }),
+    prisma.projectMember.findMany({
+      where: { userId: session.user.id, project: { archived: false } },
+      include: { project: true },
+      orderBy: { createdAt: "desc" },
     }),
   ]);
 
@@ -44,26 +54,35 @@ export default async function MyWorkPage() {
   const closedSummary = summarizeTimeEntries(timeEntries.filter((e) => e.endedAt));
   const canEdit = can(session.user.role, "task:edit");
 
-  const projectNames = Object.fromEntries(
-    tasks.map((t) => [t.projectId, t.project.name])
-  );
-  const projectBreakdown = Array.from(summary.byProject.entries()).map(([projectId, stats]) => ({
-    projectId,
-    name: projectNames[projectId] || "Project",
-    workMinutes: stats.work,
-    breakMinutes: stats.break,
-  }));
+  const projectNames: Record<string, string> = {};
+  for (const m of memberships) projectNames[m.projectId] = m.project.name;
+  for (const t of tasks) projectNames[t.projectId] = t.project.name;
+  for (const e of timeEntries) {
+    if (e.projectId && e.project?.name) projectNames[e.projectId] = e.project.name;
+  }
+
+  const today = summarizeTodayByProject(timeEntries, projectNames);
+  const cumulativeByProject = Array.from(summary.byProject.entries())
+    .map(([projectId, stats]) => ({
+      projectId,
+      name: projectNames[projectId] || "Project",
+      workMinutes: stats.work,
+      breakMinutes: stats.break,
+    }))
+    .sort((a, b) => b.workMinutes - a.workMinutes);
 
   const workloadHours = ranked.reduce((sum, t) => sum + (t.estimateHours ?? 2.4), 0);
   const scheduleRisks =
     ranked.filter((t) => t.bucket === "attention").length + (openRisks > 0 ? 1 : 0);
   const budgetOk = true; // personal assignments inherit portfolio budget health unless flagged later
 
-  const openTasks = ranked.map((t) => ({
+  const projects = memberships.map((m) => ({ id: m.projectId, name: m.project.name }));
+  // Include assigned tasks (open + recent done) so clock target is never empty when work exists
+  const clockTasks = tasks.map((t) => ({
     id: t.id,
     title: t.title,
     projectId: t.projectId,
-    projectName: t.projectName,
+    projectName: t.project.name,
   }));
 
   return (
@@ -83,10 +102,20 @@ export default async function MyWorkPage() {
               : null
         }
         activeTaskId={summary.openWork?.taskId ?? ranked[0]?.id ?? null}
-        workMinutes={closedSummary.workMinutes}
-        breakMinutes={closedSummary.breakMinutes}
-        projectBreakdown={projectBreakdown}
-        tasks={openTasks}
+        activeProjectId={
+          summary.openWork?.projectId ??
+          summary.openBreak?.projectId ??
+          ranked[0]?.projectId ??
+          projects[0]?.id ??
+          null
+        }
+        closedWorkMinutes={closedSummary.workMinutes}
+        closedBreakMinutes={closedSummary.breakMinutes}
+        todayWorkMinutes={today.workMinutes}
+        todayByProject={today.rows}
+        cumulativeByProject={cumulativeByProject}
+        projects={projects}
+        tasks={clockTasks}
       />
 
       <DailyBriefBar

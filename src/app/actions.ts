@@ -251,80 +251,106 @@ export async function updateTaskStatusAction(formData: FormData) {
   revalidatePath("/dashboard");
 }
 
-export async function clockInAction(formData: FormData) {
-  const session = await requireSession();
-  const taskId = String(formData.get("taskId") || "").trim() || null;
-  const projectIdRaw = String(formData.get("projectId") || "").trim() || null;
+export async function clockInAction(input?: {
+  taskId?: string | null;
+  projectId?: string | null;
+}) {
+  try {
+    const session = await requireSession();
+    const taskId = input?.taskId?.trim() || null;
+    let projectId = input?.projectId?.trim() || null;
 
-  let projectId = projectIdRaw;
-  if (taskId) {
-    const task = await prisma.task.findUnique({ where: { id: taskId } });
-    if (task) projectId = task.projectId;
-  }
-
-  const open = await prisma.timeEntry.findMany({
-    where: { userId: session.user.id, endedAt: null },
-  });
-
-  const now = new Date();
-  for (const entry of open) {
-    if (entry.kind === TimeEntryKind.WORK) {
-      return; // already clocked in
+    if (taskId) {
+      const task = await prisma.task.findUnique({ where: { id: taskId } });
+      if (!task) return { ok: false as const, error: "Task not found." };
+      projectId = task.projectId;
     }
-    await prisma.timeEntry.update({
-      where: { id: entry.id },
-      data: { endedAt: now },
+
+    if (!projectId) {
+      const membership = await prisma.projectMember.findFirst({
+        where: { userId: session.user.id, project: { archived: false } },
+        orderBy: { createdAt: "desc" },
+      });
+      projectId = membership?.projectId ?? null;
+    }
+
+    if (!projectId) {
+      return { ok: false as const, error: "Join or create a project before clocking in." };
+    }
+
+    const open = await prisma.timeEntry.findMany({
+      where: { userId: session.user.id, endedAt: null },
     });
+
+    const now = new Date();
+    for (const entry of open) {
+      if (entry.kind === TimeEntryKind.WORK) {
+        return { ok: false as const, error: "Already clocked in." };
+      }
+      await prisma.timeEntry.update({
+        where: { id: entry.id },
+        data: { endedAt: now },
+      });
+    }
+
+    await prisma.timeEntry.create({
+      data: {
+        userId: session.user.id,
+        kind: TimeEntryKind.WORK,
+        taskId,
+        projectId,
+        startedAt: now,
+        note: "Clock in",
+      },
+    });
+
+    revalidatePath("/my-work");
+    revalidatePath("/dashboard");
+    return { ok: true as const, status: "IN" as const, startedAt: now.toISOString() };
+  } catch (e) {
+    console.error("clockInAction failed", e);
+    return { ok: false as const, error: "Could not clock in. Please try again." };
   }
-
-  await prisma.timeEntry.create({
-    data: {
-      userId: session.user.id,
-      kind: TimeEntryKind.WORK,
-      taskId,
-      projectId,
-      startedAt: now,
-      note: "Clock in",
-    },
-  });
-
-  revalidatePath("/my-work");
-  revalidatePath("/dashboard");
 }
 
-export async function clockOutAction(formData: FormData) {
-  const session = await requireSession();
-  const now = new Date();
+export async function clockOutAction() {
+  try {
+    const session = await requireSession();
+    const now = new Date();
 
-  const openWork = await prisma.timeEntry.findFirst({
-    where: { userId: session.user.id, kind: TimeEntryKind.WORK, endedAt: null },
-    orderBy: { startedAt: "desc" },
-  });
+    const openWork = await prisma.timeEntry.findFirst({
+      where: { userId: session.user.id, kind: TimeEntryKind.WORK, endedAt: null },
+      orderBy: { startedAt: "desc" },
+    });
 
-  if (!openWork) return;
+    if (!openWork) {
+      return { ok: false as const, error: "You are not clocked in." };
+    }
 
-  await prisma.timeEntry.update({
-    where: { id: openWork.id },
-    data: { endedAt: now },
-  });
+    await prisma.timeEntry.update({
+      where: { id: openWork.id },
+      data: { endedAt: now },
+    });
 
-  // Start break/downtime attributed to the same task/project until next clock in
-  await prisma.timeEntry.create({
-    data: {
-      userId: session.user.id,
-      kind: TimeEntryKind.BREAK,
-      taskId: openWork.taskId,
-      projectId: openWork.projectId,
-      startedAt: now,
-      note: "Clock out · downtime",
-    },
-  });
+    // Start break/downtime attributed to the same task/project until next clock in
+    await prisma.timeEntry.create({
+      data: {
+        userId: session.user.id,
+        kind: TimeEntryKind.BREAK,
+        taskId: openWork.taskId,
+        projectId: openWork.projectId,
+        startedAt: now,
+        note: "Clock out · downtime",
+      },
+    });
 
-  // formData unused but kept for form action signature consistency
-  void formData;
-
-  revalidatePath("/my-work");
-  revalidatePath("/dashboard");
+    revalidatePath("/my-work");
+    revalidatePath("/dashboard");
+    return { ok: true as const, status: "OUT" as const, endedAt: now.toISOString() };
+  } catch (e) {
+    console.error("clockOutAction failed", e);
+    return { ok: false as const, error: "Could not clock out. Please try again." };
+  }
 }
 
 /** Client-friendly status update used by linked Command Center views */
