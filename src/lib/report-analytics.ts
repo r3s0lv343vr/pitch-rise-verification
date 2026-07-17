@@ -150,6 +150,44 @@ export type DependencyBottlenecks = {
   };
 };
 
+export type StageResourceNeed = {
+  stage: string;
+  status: "Struggling" | "Steady" | "Clear";
+  completionPct: number;
+  openTasks: number;
+  blockedTasks: number;
+  openHours: number;
+  assigneeCount: number;
+  needLabel: string;
+};
+
+export type AvailableMember = {
+  id: string;
+  name: string;
+  homeStage: string;
+  doneTasks: number;
+  openTasks: number;
+  freeHours: number;
+  status: "Ready to reallocate" | "Partially free" | "Busy";
+  note: string;
+};
+
+export type ReallocationSuggestion = {
+  memberName: string;
+  fromStage: string;
+  toStage: string;
+  freeHours: number;
+  reason: string;
+  priority: "High" | "Medium";
+};
+
+export type ResourceReallocation = {
+  stages: StageResourceNeed[];
+  available: AvailableMember[];
+  suggestions: ReallocationSuggestion[];
+  summary: string;
+};
+
 type RiskLike = {
   id: string;
   title: string;
@@ -318,6 +356,7 @@ export function buildReportAnalytics(input: {
   });
 
   const bottlenecks = buildDependencyBottlenecks(input.tasks);
+  const reallocation = buildResourceReallocation(input.tasks, stageOrder);
 
   return {
     stages: stageOrder
@@ -333,6 +372,7 @@ export function buildReportAnalytics(input: {
     criticalRisks,
     workload,
     bottlenecks,
+    reallocation,
   };
 }
 
@@ -717,5 +757,208 @@ export function buildDependencyBottlenecks(tasks: TaskLike[]): DependencyBottlen
     chain: deduped.slice(0, 7),
     ranked,
     projectImpact,
+  };
+}
+
+function taskStage(task: TaskLike): string {
+  return task.milestone?.phase
+    ? stageForProcess(task.milestone.phase.name, task.milestone.phase.order)
+    : stageForProcess(task.milestone?.name ?? task.title, null);
+}
+
+export function buildResourceReallocation(
+  tasks: TaskLike[],
+  stageOrder: string[]
+): ResourceReallocation {
+  const stagesUsed =
+    stageOrder.length > 0
+      ? stageOrder
+      : ["Discover & Align", "Build & Evaluate", "Approve & Complete"];
+
+  // Per-stage health
+  const stageNeeds: StageResourceNeed[] = stagesUsed.map((stage) => {
+    const stageTasks = tasks.filter((t) => taskStage(t) === stage);
+    const done = stageTasks.filter((t) => t.status === "DONE").length;
+    const open = stageTasks.filter((t) => t.status !== "DONE");
+    const blocked = open.filter((t) => t.status === "BLOCKED").length;
+    const openHours = Math.round(open.reduce((s, t) => s + (t.estimateHours ?? 4), 0) * 10) / 10;
+    const assignees = new Set(open.map((t) => t.assignee?.id).filter(Boolean));
+    const completionPct = stageTasks.length ? clamp((done / stageTasks.length) * 100) : 100;
+
+    let status: StageResourceNeed["status"] = "Steady";
+    let needLabel = "On track — no extra hands required.";
+    if (blocked >= 1 || (completionPct < 40 && open.length >= 2) || openHours >= 20) {
+      status = "Struggling";
+      needLabel =
+        blocked >= 1
+          ? `Needs help — ${blocked} blocked + ${open.length} open (${openHours}h).`
+          : `Behind pace — ${open.length} open tasks / ${openHours}h with low completion.`;
+    } else if (completionPct >= 80 && open.length <= 1) {
+      status = "Clear";
+      needLabel = "Mostly finished — people here can move downstream.";
+    }
+
+    return {
+      stage,
+      status,
+      completionPct,
+      openTasks: open.length,
+      blockedTasks: blocked,
+      openHours,
+      assigneeCount: assignees.size,
+      needLabel,
+    };
+  });
+
+  // Per-person home stage + availability
+  type Acc = {
+    id: string;
+    name: string;
+    byStage: Map<string, { done: number; open: number; openHours: number; doneHours: number }>;
+  };
+  const people = new Map<string, Acc>();
+
+  for (const task of tasks) {
+    if (!task.assignee) continue;
+    const acc =
+      people.get(task.assignee.id) ??
+      ({
+        id: task.assignee.id,
+        name: task.assignee.name,
+        byStage: new Map(),
+      } satisfies Acc);
+    const stage = taskStage(task);
+    const row = acc.byStage.get(stage) ?? { done: 0, open: 0, openHours: 0, doneHours: 0 };
+    const hrs = task.estimateHours ?? 4;
+    if (task.status === "DONE") {
+      row.done += 1;
+      row.doneHours += hrs;
+    } else {
+      row.open += 1;
+      row.openHours += hrs;
+    }
+    acc.byStage.set(stage, row);
+    people.set(task.assignee.id, acc);
+  }
+
+  const available: AvailableMember[] = [...people.values()]
+    .map((p) => {
+      const stageRows = [...p.byStage.entries()].map(([stage, stats]) => ({
+        stage,
+        ...stats,
+        weight: stats.done + stats.open,
+      }));
+      stageRows.sort((a, b) => b.weight - a.weight || b.doneHours - a.doneHours);
+      const home = stageRows[0];
+      const homeStage = home?.stage ?? stagesUsed[0];
+      const doneTasks = stageRows.reduce((s, r) => s + r.done, 0);
+      const openTasks = stageRows.reduce((s, r) => s + r.open, 0);
+      const openHours = stageRows.reduce((s, r) => s + r.openHours, 0);
+      const homeOpen = home?.open ?? 0;
+      const homeDone = home?.done ?? 0;
+
+      let status: AvailableMember["status"] = "Busy";
+      let note = `Still carrying open work in ${homeStage}.`;
+      let freeHours = 0;
+
+      if (openTasks === 0 && doneTasks > 0) {
+        status = "Ready to reallocate";
+        freeHours = Math.max(8, Math.round((home?.doneHours ?? 8) * 0.5));
+        note = `Finished assigned work in ${homeStage} — free to reinforce a struggling stage.`;
+      } else if (homeOpen === 0 && homeDone > 0 && openHours <= 8) {
+        status = "Ready to reallocate";
+        freeHours = Math.max(6, Math.round(20 - openHours));
+        note = `Home stage ${homeStage} is complete; only light residual work elsewhere.`;
+      } else if (openHours <= 8 && doneTasks >= 1) {
+        status = "Partially free";
+        freeHours = Math.round((20 - openHours) * 10) / 10;
+        note = `Has ~${freeHours}h spare capacity after ${homeStage} progress.`;
+      }
+
+      return {
+        id: p.id,
+        name: p.name,
+        homeStage,
+        doneTasks,
+        openTasks,
+        freeHours,
+        status,
+        note,
+      };
+    })
+    .filter((p) => p.doneTasks > 0 || p.openTasks > 0)
+    .sort((a, b) => {
+      const rank = (s: AvailableMember["status"]) =>
+        s === "Ready to reallocate" ? 0 : s === "Partially free" ? 1 : 2;
+      return rank(a.status) - rank(b.status) || b.freeHours - a.freeHours;
+    });
+
+  const struggling = stageNeeds.filter((s) => s.status === "Struggling");
+  const movers = available.filter(
+    (p) => p.status === "Ready to reallocate" || p.status === "Partially free"
+  );
+
+  const suggestions: ReallocationSuggestion[] = [];
+  for (const need of struggling) {
+    const candidates = movers
+      .filter((m) => m.homeStage !== need.stage)
+      .sort((a, b) => {
+        // Prefer people from Clear/finished earlier stages
+        const aClear = stageNeeds.find((s) => s.stage === a.homeStage)?.status === "Clear" ? 1 : 0;
+        const bClear = stageNeeds.find((s) => s.stage === b.homeStage)?.status === "Clear" ? 1 : 0;
+        return bClear - aClear || b.freeHours - a.freeHours;
+      });
+
+    for (const m of candidates.slice(0, 2)) {
+      if (suggestions.some((s) => s.memberName === m.name && s.toStage === need.stage)) continue;
+      suggestions.push({
+        memberName: m.name,
+        fromStage: m.homeStage,
+        toStage: need.stage,
+        freeHours: m.freeHours,
+        priority: m.status === "Ready to reallocate" && need.blockedTasks > 0 ? "High" : "Medium",
+        reason:
+          need.blockedTasks > 0
+            ? `${m.name} finished (or nearly finished) ${m.homeStage} and can help clear ${need.blockedTasks} blocked item${need.blockedTasks === 1 ? "" : "s"} in ${need.stage}.`
+            : `${m.name} has spare capacity from ${m.homeStage} — move ~${m.freeHours}h into ${need.stage} (${need.openTasks} open / ${need.openHours}h).`,
+      });
+    }
+  }
+
+  // If no struggling stage but someone is free, suggest reinforcing the least-complete open stage
+  if (suggestions.length === 0 && movers.length > 0) {
+    const target =
+      [...stageNeeds].sort((a, b) => a.completionPct - b.completionPct || b.openHours - a.openHours)[0] ??
+      null;
+    const mover = movers[0];
+    if (target && mover && target.stage !== mover.homeStage) {
+      suggestions.push({
+        memberName: mover.name,
+        fromStage: mover.homeStage,
+        toStage: target.stage,
+        freeHours: mover.freeHours,
+        priority: "Medium",
+        reason: `${mover.name} is free from ${mover.homeStage}; reinforce ${target.stage} to keep momentum (${target.completionPct}% complete).`,
+      });
+    }
+  }
+
+  const readyCount = available.filter((p) => p.status === "Ready to reallocate").length;
+  const summary =
+    struggling.length === 0
+      ? readyCount > 0
+        ? `${readyCount} teammate${readyCount === 1 ? "" : "s"} finished their home stage and can be reassigned if a later area slips.`
+        : "No stage is currently flagged as struggling; keep monitoring open load by process area."
+      : `${struggling.map((s) => s.stage).join(", ")} need${struggling.length === 1 ? "s" : ""} reinforcement — ${
+          suggestions.length
+            ? `${suggestions.length} reallocation option${suggestions.length === 1 ? "" : "s"} from finished/lighter stages.`
+            : "no free capacity found yet; finish earlier-stage work to free people."
+        }`;
+
+  return {
+    stages: stageNeeds,
+    available: available.slice(0, 10),
+    suggestions: suggestions.slice(0, 6),
+    summary,
   };
 }

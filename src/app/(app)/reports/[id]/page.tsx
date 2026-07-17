@@ -15,6 +15,7 @@ import {
 import { RiskReviewDeck } from "@/components/reports/risk-review-deck";
 import { WorkloadWindowPanel } from "@/components/reports/workload-window";
 import { DependencyBottlenecksPanel } from "@/components/reports/dependency-bottlenecks";
+import { ResourceReallocationPanel } from "@/components/reports/resource-reallocation";
 
 export default async function ReportDetailPage({
   params,
@@ -217,6 +218,7 @@ export default async function ReportDetailPage({
       <RisksChart stages={analytics.stages} />
       <WorkloadWindowPanel workload={analytics.workload} />
       <DependencyBottlenecksPanel bottlenecks={analytics.bottlenecks} />
+      <ResourceReallocationPanel reallocation={analytics.reallocation} />
       <RiskReviewDeck risks={analytics.criticalRisks} />
     </div>
   );
