@@ -43,7 +43,7 @@ export default async function ProjectsPage({
     <div>
       <PageHeader
         title="Projects"
-        subtitle="Create, organize, and archive the workstreams the cohort lives in."
+        subtitle="Create a project and a process-map flowchart is shaped automatically (gates, team lanes, dependencies) for the Command Center."
       />
 
       <div className="mb-6 grid gap-4 lg:grid-cols-3">
@@ -85,6 +85,9 @@ export default async function ProjectsPage({
 
         <Card>
           <h2 className="text-lg font-medium text-white">New project</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Seeds Discover → Evaluate → Approve process nodes with Team A / Alpha / Randall-style ownership.
+          </p>
           {canCreate ? (
             <form action={createProjectAction} className="mt-4 space-y-3">
               <div>
@@ -100,7 +103,7 @@ export default async function ProjectsPage({
                 <Input id="overallBudget" name="overallBudget" type="number" min={0} defaultValue={10000} />
               </div>
               <Button type="submit" className="w-full">
-                Create project
+                Create project + process map
               </Button>
             </form>
           ) : (

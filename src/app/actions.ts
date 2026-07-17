@@ -59,29 +59,108 @@ export async function createProjectAction(formData: FormData) {
   const overallBudget = Number(formData.get("overallBudget") || 0);
   if (!name) redirect("/projects?error=name");
 
+  const budget = Number.isFinite(overallBudget) ? overallBudget : 0;
+  const { DEFAULT_PROCESS_TEMPLATE, PROCESS_PHASES, PROCESS_MILESTONES } = await import(
+    "@/lib/process-template"
+  );
+
   const project = await prisma.project.create({
     data: {
       name,
-      description,
-      overallBudget: Number.isFinite(overallBudget) ? overallBudget : 0,
+      description:
+        description ||
+        "Process-mapped project with linked Command Center views (Process Map, Kanban, Gantt).",
+      overallBudget: budget,
       status: ProjectStatus.ACTIVE,
+      startDate: new Date(),
+      endDate: new Date(Date.now() + 21 * 86400000),
       ownerId: session.user.id,
       members: {
         create: { userId: session.user.id, role: session.user.role },
       },
-      phases: {
-        create: [
-          { name: "Phase 1 — Discover", order: 1 },
-          { name: "Phase 2 — Build", order: 2 },
-          { name: "Phase 3 — Launch", order: 3 },
-        ],
-      },
     },
   });
 
+  const phases = [];
+  for (const p of PROCESS_PHASES) {
+    phases.push(
+      await prisma.phase.create({
+        data: { projectId: project.id, name: p.name, order: p.order },
+      })
+    );
+  }
+
+  const milestones = [];
+  for (const m of PROCESS_MILESTONES) {
+    const phase = phases.find((ph) => ph.order === m.order) ?? phases[0];
+    milestones.push(
+      await prisma.milestone.create({
+        data: {
+          projectId: project.id,
+          phaseId: phase.id,
+          name: m.name,
+          order: m.order,
+          subBudget: Math.round(budget * m.budgetShare),
+          dueDate: new Date(Date.now() + m.order * 7 * 86400000),
+        },
+      })
+    );
+  }
+
+  const usernames = Array.from(
+    new Set(DEFAULT_PROCESS_TEMPLATE.map((s) => s.preferredUsername).filter(Boolean) as string[])
+  );
+  const preferredUsers = await prisma.user.findMany({
+    where: { username: { in: usernames } },
+  });
+  const userByUsername = Object.fromEntries(preferredUsers.map((u) => [u.username, u]));
+
+  const createdByKey: Record<string, string> = {};
+  const start = new Date();
+  for (const step of DEFAULT_PROCESS_TEMPLATE) {
+    const milestone = milestones.find((m) => m.order === step.milestoneOrder) ?? milestones[0];
+    const assignee = step.preferredUsername ? userByUsername[step.preferredUsername] : undefined;
+    if (assignee) {
+      await prisma.projectMember.upsert({
+        where: { projectId_userId: { projectId: project.id, userId: assignee.id } },
+        update: {},
+        create: { projectId: project.id, userId: assignee.id, role: assignee.role },
+      });
+    }
+    const taskStart = new Date(start.getTime() + step.dayOffset * 86400000);
+    const taskDue = new Date(taskStart.getTime() + step.durationDays * 86400000);
+    const task = await prisma.task.create({
+      data: {
+        projectId: project.id,
+        milestoneId: milestone.id,
+        title: step.title,
+        description: step.description,
+        status: step.status,
+        assigneeId: assignee?.id ?? session.user.id,
+        creatorId: session.user.id,
+        startDate: taskStart,
+        dueDate: taskDue,
+        estimateHours: step.estimateHours,
+      },
+    });
+    createdByKey[step.key] = task.id;
+  }
+
+  for (const step of DEFAULT_PROCESS_TEMPLATE) {
+    for (const depKey of step.dependsOnKeys) {
+      const dependsOnId = createdByKey[depKey];
+      const taskId = createdByKey[step.key];
+      if (dependsOnId && taskId) {
+        await prisma.taskDependency.create({
+          data: { taskId, dependsOnId },
+        });
+      }
+    }
+  }
+
   revalidatePath("/projects");
   revalidatePath("/dashboard");
-  redirect(`/projects/${project.id}`);
+  redirect(`/dashboard?tab=process&project=${project.id}`);
 }
 
 export async function archiveProjectAction(formData: FormData) {
@@ -158,9 +237,6 @@ export async function createTaskAction(formData: FormData) {
 
 export async function updateTaskStatusAction(formData: FormData) {
   const session = await requireSession();
-  if (!can(session.user.role, "task:edit") && session.user.role !== Role.VIEWER) {
-    // viewers cannot edit
-  }
   if (!can(session.user.role, "task:edit")) return;
 
   const taskId = String(formData.get("taskId") || "");
@@ -172,6 +248,23 @@ export async function updateTaskStatusAction(formData: FormData) {
   revalidatePath(`/projects/${task.projectId}`);
   revalidatePath("/my-work");
   revalidatePath("/dashboard");
+}
+
+/** Client-friendly status update used by linked Command Center views */
+export async function setTaskStatus(taskId: string, status: string) {
+  const session = await requireSession();
+  if (!can(session.user.role, "task:edit")) {
+    return { ok: false as const, error: "forbidden" };
+  }
+  const parsed = parseStatus(status);
+  const task = await prisma.task.update({
+    where: { id: taskId },
+    data: { status: parsed },
+  });
+  revalidatePath(`/projects/${task.projectId}`);
+  revalidatePath("/my-work");
+  revalidatePath("/dashboard");
+  return { ok: true as const, status: parsed, projectId: task.projectId };
 }
 
 export async function assignTaskAction(formData: FormData) {

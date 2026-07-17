@@ -1,5 +1,10 @@
 import { PrismaClient, Role, ProjectStatus, TaskStatus, RiskSeverity, IssuePriority, ChangeStatus, IntegrationProvider } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import {
+  DEFAULT_PROCESS_TEMPLATE,
+  PROCESS_MILESTONES,
+  PROCESS_PHASES,
+} from "../src/lib/process-template";
 
 const prisma = new PrismaClient();
 
@@ -159,178 +164,82 @@ async function main() {
     },
   });
 
-  const phase1 = await prisma.phase.create({
-    data: {
-      projectId: project.id,
-      name: "Foundation",
-      description: "Auth, data model, core PM workflows",
-      order: 1,
-      startDate: start,
-      endDate: new Date(start.getTime() + 7 * 86400000),
-    },
-  });
-  const phase2 = await prisma.phase.create({
-    data: {
-      projectId: project.id,
-      name: "Intelligence Views",
-      description: "Kanban, Gantt, maps, budgets, risks",
-      order: 2,
-      startDate: new Date(start.getTime() + 7 * 86400000),
-      endDate: new Date(start.getTime() + 21 * 86400000),
-    },
-  });
-  const phase3 = await prisma.phase.create({
-    data: {
-      projectId: project.id,
-      name: "Operate & Scale",
-      description: "Cohort rollout, review week, cutover",
-      order: 3,
-      startDate: new Date(start.getTime() + 21 * 86400000),
-      endDate: end,
-    },
-  });
+  const phases = [];
+  for (const p of PROCESS_PHASES) {
+    phases.push(
+      await prisma.phase.create({
+        data: {
+          projectId: project.id,
+          name: p.name,
+          order: p.order,
+          startDate: new Date(start.getTime() + (p.order - 1) * 7 * 86400000),
+          endDate: new Date(start.getTime() + p.order * 7 * 86400000),
+        },
+      })
+    );
+  }
 
-  const m1 = await prisma.milestone.create({
-    data: {
-      projectId: project.id,
-      phaseId: phase1.id,
-      name: "Ballot-ready baseline",
-      description: "Projects, tasks, status, assign, filters, auth ≥30",
-      dueDate: new Date(start.getTime() + 5 * 86400000),
-      status: TaskStatus.IN_PROGRESS,
-      subBudget: 25000,
-      order: 1,
-    },
-  });
-  const m2 = await prisma.milestone.create({
-    data: {
-      projectId: project.id,
-      phaseId: phase2.id,
-      name: "Complex PM surfaces",
-      description: "Maps, Gantt, budgets, risk/issue/change",
-      dueDate: new Date(start.getTime() + 14 * 86400000),
-      status: TaskStatus.TODO,
-      subBudget: 45000,
-      order: 2,
-    },
-  });
-  const m3 = await prisma.milestone.create({
-    data: {
-      projectId: project.id,
-      phaseId: phase3.id,
-      name: "Production cutover",
-      description: "HTTPS live, roster seeded, staff smoke-test passed",
-      dueDate: end,
-      status: TaskStatus.TODO,
-      subBudget: 55000,
-      order: 3,
-    },
-  });
+  const milestones = [];
+  for (const m of PROCESS_MILESTONES) {
+    const phase = phases.find((ph) => ph.order === m.order) ?? phases[0];
+    milestones.push(
+      await prisma.milestone.create({
+        data: {
+          projectId: project.id,
+          phaseId: phase.id,
+          name: m.name,
+          order: m.order,
+          subBudget: Math.round(125000 * m.budgetShare),
+          dueDate: new Date(start.getTime() + m.order * 7 * 86400000),
+        },
+      })
+    );
+  }
 
-  const t1 = await prisma.task.create({
-    data: {
-      projectId: project.id,
-      milestoneId: m1.id,
-      title: "Ship email/password auth for 30+ accounts",
-      description: "Open registration + seeded staff-review account",
-      status: TaskStatus.DONE,
-      assigneeId: admin.id,
-      creatorId: pm.id,
-      startDate: start,
-      dueDate: new Date(start.getTime() + 2 * 86400000),
-      estimateHours: 12,
-    },
-  });
-  const t2 = await prisma.task.create({
-    data: {
-      projectId: project.id,
-      milestoneId: m1.id,
-      title: "Project + task CRUD with status workflow",
-      description: "todo / in progress / in review / done / blocked",
-      status: TaskStatus.IN_PROGRESS,
-      assigneeId: randall.id,
-      creatorId: pm.id,
-      startDate: start,
-      dueDate: new Date(start.getTime() + 4 * 86400000),
-      estimateHours: 16,
-    },
-  });
-  const t3 = await prisma.task.create({
-    data: {
-      projectId: project.id,
-      milestoneId: m1.id,
-      title: "Assignment + filters by assignee/status/project",
-      description: "Any cohort member by email or username",
-      status: TaskStatus.TODO,
-      assigneeId: alpha.id,
-      creatorId: pm.id,
-      dueDate: new Date(start.getTime() + 5 * 86400000),
-      estimateHours: 8,
-    },
-  });
-  const t4 = await prisma.task.create({
-    data: {
-      projectId: project.id,
-      milestoneId: m2.id,
-      title: "Kanban + Gantt + project map views",
-      description: "Phases → milestones → tasks → completion",
-      status: TaskStatus.IN_REVIEW,
-      assigneeId: member.id,
-      creatorId: pm.id,
-      dueDate: new Date(start.getTime() + 12 * 86400000),
-      estimateHours: 20,
-    },
-  });
-  const t5 = await prisma.task.create({
-    data: {
-      projectId: project.id,
-      milestoneId: m2.id,
-      title: "Budget burn + milestone sub-budgets",
-      description: "Overall budget with per-milestone allocations",
-      status: TaskStatus.TODO,
-      assigneeId: alpha.id,
-      creatorId: admin.id,
-      dueDate: new Date(start.getTime() + 13 * 86400000),
-      estimateHours: 10,
-    },
-  });
-  const t6 = await prisma.task.create({
-    data: {
-      projectId: project.id,
-      milestoneId: m3.id,
-      title: "Risk / issue / change request tracking",
-      description: "Operator-ready workflow for cohort chaos",
-      status: TaskStatus.BLOCKED,
-      assigneeId: randall.id,
-      creatorId: admin.id,
-      dueDate: new Date(start.getTime() + 20 * 86400000),
-      estimateHours: 12,
-    },
-  });
-  const t7 = await prisma.task.create({
-    data: {
-      projectId: project.id,
-      milestoneId: m2.id,
-      title: "Process Map Command Center UX",
-      description: "Node-first navigation with owner, deadline, blockers, budget, risks",
-      status: TaskStatus.IN_PROGRESS,
-      assigneeId: pm.id,
-      creatorId: admin.id,
-      dueDate: new Date(start.getTime() + 10 * 86400000),
-      estimateHours: 14,
-    },
-  });
+  const userByUsername: Record<string, { id: string }> = {
+    admin,
+    "priya-pm": pm,
+    "marcus-dev": member,
+    randall,
+    alpha,
+  };
 
-  await prisma.taskDependency.createMany({
-    data: [
-      { taskId: t2.id, dependsOnId: t1.id },
-      { taskId: t3.id, dependsOnId: t2.id },
-      { taskId: t4.id, dependsOnId: t3.id },
-      { taskId: t5.id, dependsOnId: t3.id },
-      { taskId: t6.id, dependsOnId: t4.id },
-      { taskId: t7.id, dependsOnId: t2.id },
-    ],
-  });
+  const createdByKey: Record<string, string> = {};
+  for (const step of DEFAULT_PROCESS_TEMPLATE) {
+    const milestone = milestones.find((m) => m.order === step.milestoneOrder) ?? milestones[0];
+    const assignee = step.preferredUsername ? userByUsername[step.preferredUsername] : pm;
+    // Force one overshot blocked item for Gantt red demo on revise step
+    const taskStart = new Date(start.getTime() + step.dayOffset * 86400000);
+    let taskDue = new Date(taskStart.getTime() + step.durationDays * 86400000);
+    if (step.key === "revise") {
+      taskDue = new Date(Date.now() - 2 * 86400000);
+    }
+    const task = await prisma.task.create({
+      data: {
+        projectId: project.id,
+        milestoneId: milestone.id,
+        title: step.title,
+        description: step.description,
+        status: step.status,
+        assigneeId: assignee.id,
+        creatorId: pm.id,
+        startDate: taskStart,
+        dueDate: taskDue,
+        estimateHours: step.estimateHours,
+      },
+    });
+    createdByKey[step.key] = task.id;
+  }
+
+  for (const step of DEFAULT_PROCESS_TEMPLATE) {
+    for (const depKey of step.dependsOnKeys) {
+      const dependsOnId = createdByKey[depKey];
+      const taskId = createdByKey[step.key];
+      if (dependsOnId && taskId) {
+        await prisma.taskDependency.create({ data: { taskId, dependsOnId } });
+      }
+    }
+  }
 
   await prisma.risk.createMany({
     data: [
