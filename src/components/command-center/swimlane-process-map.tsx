@@ -20,10 +20,13 @@ import {
   Wallet,
 } from "lucide-react";
 
-const COL_W = 220;
-const ROW_H = 120;
+const LANE_W = 148;
+const COL_W = 230;
 const NODE_W = 180;
-const NODE_H = 72;
+const NODE_H = 76;
+const NODE_GAP_Y = 14;
+const LANE_PAD_Y = 28;
+const DROPDOWN_H = 340;
 
 function topologicalColumns(nodes: LinkedTaskNode[]) {
   const byId = Object.fromEntries(nodes.map((n) => [n.id, n]));
@@ -67,27 +70,67 @@ export function SwimlaneProcessMap({
   }, [nodes]);
 
   const columns = useMemo(() => topologicalColumns(nodes), [nodes]);
+
+  const laneHeights = useMemo(() => {
+    const maxSlots = new Map<string, number>();
+    for (const team of teams) maxSlots.set(team, 1);
+    columns.forEach((colNodes) => {
+      const counts = new Map<string, number>();
+      for (const node of colNodes) {
+        counts.set(node.team, (counts.get(node.team) ?? 0) + 1);
+      }
+      for (const [team, count] of counts) {
+        maxSlots.set(team, Math.max(maxSlots.get(team) ?? 1, count));
+      }
+    });
+    return teams.map((team) => {
+      const slots = maxSlots.get(team) ?? 1;
+      return Math.max(120, LANE_PAD_Y * 2 + slots * NODE_H + (slots - 1) * NODE_GAP_Y);
+    });
+  }, [columns, teams]);
+
+  const laneTops = useMemo(() => {
+    const tops: number[] = [];
+    let y = 16;
+    for (const h of laneHeights) {
+      tops.push(y);
+      y += h;
+    }
+    return tops;
+  }, [laneHeights]);
+
   const positions = useMemo(() => {
-    const map = new Map<string, { x: number; y: number; teamIndex: number; col: number }>();
+    const map = new Map<
+      string,
+      { x: number; y: number; teamIndex: number; col: number; laneBottom: number }
+    >();
     columns.forEach((colNodes, col) => {
       const usedInLane = new Map<string, number>();
       for (const node of colNodes) {
         const teamIndex = Math.max(0, teams.indexOf(node.team));
         const laneSlot = usedInLane.get(node.team) ?? 0;
         usedInLane.set(node.team, laneSlot + 1);
+        const laneTop = laneTops[teamIndex] ?? 16;
+        const laneH = laneHeights[teamIndex] ?? 120;
         map.set(node.id, {
-          x: 40 + col * COL_W,
-          y: 40 + teamIndex * ROW_H + laneSlot * 8,
+          // Keep tiles clear of the sticky lane title column
+          x: LANE_W + 20 + col * COL_W,
+          y: laneTop + LANE_PAD_Y + laneSlot * (NODE_H + NODE_GAP_Y),
           teamIndex,
           col,
+          laneBottom: laneTop + laneH,
         });
       }
     });
     return map;
-  }, [columns, teams]);
+  }, [columns, teams, laneTops, laneHeights]);
 
-  const width = Math.max(900, 80 + columns.length * COL_W);
-  const height = Math.max(420, 80 + teams.length * ROW_H);
+  const contentBottom = laneTops.length
+    ? laneTops[laneTops.length - 1] + laneHeights[laneHeights.length - 1]
+    : 420;
+  const width = Math.max(960, LANE_W + 40 + columns.length * COL_W + 40);
+  const openPos = openId ? positions.get(openId) : undefined;
+  const height = contentBottom + 24 + (openPos ? DROPDOWN_H : 40);
 
   const edges = useMemo(() => {
     const list: { from: string; to: string }[] = [];
@@ -113,21 +156,46 @@ export function SwimlaneProcessMap({
       </div>
 
       <div className="overflow-auto rounded-2xl border border-slate-800 bg-[radial-gradient(circle_at_top,_#1e1b4b_0%,_#020617_55%)]">
-        <div className="relative" style={{ width, height: height + 40 }}>
+        <div className="relative" style={{ width, height }}>
           {/* swimlane bands */}
           {teams.map((team, i) => (
             <div
               key={team}
-              className="absolute left-0 right-0 border-b border-slate-700/50"
-              style={{ top: 20 + i * ROW_H, height: ROW_H }}
-            >
-              <div className="sticky left-0 z-10 flex h-full w-28 items-center bg-slate-950/80 px-3 text-xs font-semibold uppercase tracking-wide text-cyan-200/90">
-                {team}
-              </div>
-            </div>
+              className="absolute border-b border-slate-700/50"
+              style={{
+                top: laneTops[i],
+                left: LANE_W,
+                right: 0,
+                height: laneHeights[i],
+                background:
+                  i % 2 === 0 ? "rgba(15,23,42,0.35)" : "rgba(2,6,23,0.15)",
+              }}
+            />
           ))}
 
-          <svg className="absolute inset-0" width={width} height={height + 40}>
+          {/* sticky lane titles — always above flowchart tiles */}
+          <div
+            className="sticky left-0 z-40 border-r border-slate-700/80 bg-slate-950/95 shadow-[8px_0_18px_rgba(2,6,23,0.55)] backdrop-blur"
+            style={{ width: LANE_W, height }}
+          >
+            {teams.map((team, i) => (
+              <div
+                key={team}
+                className="absolute flex items-center border-b border-slate-700/50 px-3"
+                style={{ top: laneTops[i], height: laneHeights[i], width: LANE_W }}
+              >
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-cyan-200/95">
+                  {team}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <svg
+            className="pointer-events-none absolute inset-0 z-10"
+            width={width}
+            height={height}
+          >
             {edges.map((e) => {
               const a = positions.get(e.from)!;
               const b = positions.get(e.to)!;
@@ -158,17 +226,21 @@ export function SwimlaneProcessMap({
             const pos = positions.get(node.id);
             if (!pos) return null;
             const open = openId === node.id;
+            const spaceBelow = height - (pos.y + NODE_H);
+            const openUpward = open && spaceBelow < DROPDOWN_H - 20;
+            const nearRight = pos.x + 280 > width - 16;
+
             return (
               <div
                 key={node.id}
-                className="absolute z-20"
+                className={cn("absolute", open ? "z-50" : "z-20")}
                 style={{ left: pos.x, top: pos.y, width: NODE_W }}
               >
                 <button
                   type="button"
                   onClick={() => setOpenId(open ? null : node.id)}
                   className={cn(
-                    "w-full rounded-xl border px-3 py-2 text-left shadow-lg transition",
+                    "relative z-[1] w-full rounded-xl border px-3 py-2 text-left shadow-lg transition",
                     node.isDecision
                       ? "border-emerald-400/40 bg-slate-100 text-slate-900"
                       : node.isTerminal
@@ -179,16 +251,26 @@ export function SwimlaneProcessMap({
                 >
                   <div className="flex items-start justify-between gap-1">
                     <div className="text-[12px] font-semibold leading-snug">{node.title}</div>
-                    <ChevronDown className={cn("mt-0.5 h-3.5 w-3.5 shrink-0 transition", open && "rotate-180")} />
+                    <ChevronDown
+                      className={cn("mt-0.5 h-3.5 w-3.5 shrink-0 transition", open && "rotate-180")}
+                    />
                   </div>
-                  <div className={cn("mt-1 text-[10px]", node.isDecision ? "text-slate-600" : "text-white/80")}>
+                  <div
+                    className={cn("mt-1 text-[10px]", node.isDecision ? "text-slate-600" : "text-white/80")}
+                  >
                     {STATUS_LABEL[node.status]} · {node.owner}
                   </div>
                   <div className={cn("mt-2 h-1.5 w-full rounded-full", STATUS_BAR[node.status])} />
                 </button>
 
                 {open ? (
-                  <div className="absolute left-0 top-[calc(100%+6px)] z-30 w-[280px] rounded-xl border border-slate-700 bg-slate-950 p-3 shadow-2xl">
+                  <div
+                    className={cn(
+                      "absolute z-[60] w-[280px] rounded-xl border border-slate-600 bg-slate-950 p-3 shadow-2xl ring-1 ring-cyan-400/20",
+                      openUpward ? "bottom-[calc(100%+8px)]" : "top-[calc(100%+8px)]",
+                      nearRight ? "right-0" : "left-0"
+                    )}
+                  >
                     <DropdownDetails node={node} />
                     {canEdit && onStatusChange ? (
                       <div className="mt-3 border-t border-slate-800 pt-3">
@@ -248,11 +330,7 @@ function DropdownDetails({ node }: { node: LinkedTaskNode }) {
         label="Downstream impact"
         value={node.downstreamImpact.length ? node.downstreamImpact.join("; ") : "None"}
       />
-      <Row
-        icon={FileText}
-        label="Linked documents"
-        value={node.linkedDocuments.join("; ")}
-      />
+      <Row icon={FileText} label="Linked documents" value={node.linkedDocuments.join("; ")} />
       <div>
         <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
           <Flag className="h-3 w-3" /> Linked risks
