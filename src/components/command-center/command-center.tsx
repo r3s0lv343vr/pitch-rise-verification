@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { setTaskStatus } from "@/app/actions";
@@ -12,14 +12,14 @@ import { cn, formatCurrency } from "@/lib/utils";
 import type { LinkedTaskNode, TaskStatusValue } from "@/lib/command-center-types";
 import { AlertTriangle, ArrowRight, Flame } from "lucide-react";
 
-const tabs = [
+export const commandCenterTabs = [
   { id: "main", label: "Main" },
   { id: "process", label: "Process Map" },
   { id: "kanban", label: "Kanban" },
   { id: "gantt", label: "Gantt Chart" },
 ] as const;
 
-type TabId = (typeof tabs)[number]["id"];
+export type CommandCenterTabId = (typeof commandCenterTabs)[number]["id"];
 
 export type CommandCenterOverview = {
   activeProjects: number;
@@ -42,30 +42,44 @@ export function CommandCenter({
 }: {
   initialNodes: LinkedTaskNode[];
   canEdit: boolean;
-  initialTab?: TabId;
+  initialTab?: CommandCenterTabId;
   overview: CommandCenterOverview;
 }) {
   const router = useRouter();
-  const [tab, setTab] = useState<TabId>(initialTab);
+  const [tab, setTab] = useState<CommandCenterTabId>(initialTab);
   const [nodes, setNodes] = useState(initialNodes);
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    setTab(initialTab);
+  }, [initialTab]);
+
+  useEffect(() => {
+    setNodes(initialNodes);
+  }, [initialNodes]);
 
   const projectNames = useMemo(
     () => Array.from(new Set(nodes.map((n) => n.projectName))),
     [nodes]
   );
 
+  function selectTab(next: CommandCenterTabId) {
+    setTab(next);
+    const url = next === "main" ? "/dashboard" : `/dashboard?tab=${next}`;
+    router.replace(url, { scroll: false });
+  }
+
   function handleStatusChange(taskId: string, status: TaskStatusValue) {
     const previous = nodes;
     setNodes((curr) => curr.map((n) => (n.id === taskId ? { ...n, status } : n)));
-    setMessage("Linked views updated — Process Map colors & Gantt health refreshed.");
+    setMessage("Linked views updated.");
 
     startTransition(async () => {
       const res = await setTaskStatus(taskId, status);
       if (!res.ok) {
         setNodes(previous);
-        setMessage("Could not save status (permission or network). Reverted.");
+        setMessage("Could not save status. Reverted.");
         return;
       }
       router.refresh();
@@ -73,181 +87,164 @@ export function CommandCenter({
   }
 
   return (
-    <div className="flex min-h-[calc(100vh-5.5rem)] flex-col gap-3">
-      <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-2 sm:p-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex w-full flex-wrap gap-2 lg:w-auto">
-            {tabs.map((t) => (
+    <div className="flex min-h-[calc(100vh-4.25rem)] flex-col">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 pb-2">
+        <div className="min-w-0">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
+            Command Center
+          </div>
+          <div className="mt-1 flex flex-wrap gap-1">
+            {commandCenterTabs.map((t) => (
               <button
                 key={t.id}
                 type="button"
-                onClick={() => setTab(t.id)}
+                onClick={() => selectTab(t.id)}
                 className={cn(
-                  "rounded-xl px-4 py-2.5 text-sm font-medium transition",
+                  "rounded-lg px-3 py-1.5 text-sm font-medium transition",
                   tab === t.id
                     ? "bg-cyan-500/20 text-cyan-100 ring-1 ring-cyan-400/40"
-                    : "bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+                    : "text-slate-400 hover:bg-slate-900 hover:text-slate-200"
                 )}
               >
                 {t.label}
               </button>
             ))}
           </div>
-          <div className="text-xs text-slate-500">
-            {projectNames.length} project{projectNames.length === 1 ? "" : "s"} · {nodes.length} process
-            nodes
-            {pending ? " · saving…" : ""}
-          </div>
         </div>
-        {message ? <p className="mt-2 px-1 text-xs text-cyan-300/90">{message}</p> : null}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] text-slate-500">
+            {projectNames.length} projects · {nodes.length} nodes
+            {pending ? " · saving…" : ""}
+          </span>
+          <Link
+            href="/projects"
+            className="rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-xs text-slate-200 hover:border-cyan-400/40"
+          >
+            Manage projects
+          </Link>
+        </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col rounded-2xl border border-slate-800 bg-slate-900/50 p-3 sm:p-4 lg:p-5">
+      {message ? <p className="mb-2 text-xs text-cyan-300/90">{message}</p> : null}
+
+      <div className="min-h-0 flex-1">
         {tab === "main" ? (
-          <div className="flex h-full flex-col gap-4">
-            <div>
-              <h2 className="text-lg font-medium text-white">Main</h2>
-              <p className="mt-1 text-sm text-slate-400">
-                Portfolio snapshot and shortcuts. Use the other tabs for Process Map, Kanban, and Gantt.
-              </p>
+          <div className="flex h-full min-h-[calc(100vh-8rem)] flex-col gap-2">
+            {/* Compact strip — keep Main lean for upcoming features */}
+            <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+              <CompactStat label="Active" value={String(overview.activeProjects)} />
+              <CompactStat label="Budget" value={formatCurrency(overview.portfolioBudget)} />
+              <CompactStat
+                label="Open risks"
+                value={String(overview.openRisks)}
+                icon={<AlertTriangle className="h-3.5 w-3.5 text-amber-300" />}
+              />
+              <CompactStat
+                label="Process nodes"
+                value={`${overview.processNodes}`}
+                hint={`${overview.accounts} accounts`}
+              />
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <Card className="p-4">
-                <div className="text-xs uppercase tracking-wide text-slate-500">Active projects</div>
-                <div className="mt-2 text-3xl font-semibold text-white">{overview.activeProjects}</div>
-              </Card>
-              <Card className="p-4">
-                <div className="text-xs uppercase tracking-wide text-slate-500">Portfolio budget</div>
-                <div className="mt-2 text-3xl font-semibold text-white">
-                  {formatCurrency(overview.portfolioBudget)}
-                </div>
-              </Card>
-              <Card className="p-4">
-                <div className="text-xs uppercase tracking-wide text-slate-500">Open risks</div>
-                <div className="mt-2 flex items-center gap-2 text-3xl font-semibold text-white">
-                  <AlertTriangle className="h-6 w-6 text-amber-300" /> {overview.openRisks}
-                </div>
-              </Card>
-              <Card className="p-4">
-                <div className="text-xs uppercase tracking-wide text-slate-500">Process nodes</div>
-                <div className="mt-2 text-3xl font-semibold text-white">{overview.processNodes}</div>
-                <p className="mt-1 text-xs text-slate-500">{overview.accounts} accounts</p>
-              </Card>
+            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-2 text-sm">
+              <div className="flex items-center gap-1.5 text-cyan-200">
+                <Flame className="h-3.5 w-3.5" />
+                <span className="text-xs font-medium uppercase tracking-wide">Next</span>
+              </div>
+              {overview.nextActionTitle ? (
+                <>
+                  <span className="min-w-0 truncate text-white">{overview.nextActionTitle}</span>
+                  <span className="text-slate-500">· {overview.nextActionProject}</span>
+                  <Badge className="bg-cyan-500/15 text-cyan-200">{overview.progressPct}%</Badge>
+                  <button
+                    type="button"
+                    onClick={() => selectTab("process")}
+                    className="ml-auto inline-flex items-center gap-1 text-xs text-cyan-300 hover:underline"
+                  >
+                    Process Map <ArrowRight className="h-3 w-3" />
+                  </button>
+                </>
+              ) : (
+                <span className="text-slate-400">No open assigned work.</span>
+              )}
             </div>
 
-            <div className="grid flex-1 gap-4 lg:grid-cols-3">
-              <Card className="lg:col-span-2">
-                <div className="mb-3 flex items-center justify-between">
-                  <h3 className="text-base font-medium text-white">Motivation pulse</h3>
-                  <Badge className="bg-cyan-500/15 text-cyan-200">{overview.progressPct}% complete</Badge>
+            <Card className="flex min-h-0 flex-1 flex-col border-dashed border-slate-700/80 bg-slate-950/30 p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-sm font-medium text-white">Main workspace</h2>
+                  <p className="text-xs text-slate-500">
+                    Reserved for high-signal Command Center features — kept open on purpose.
+                  </p>
                 </div>
-                <div className="mb-4 h-3 overflow-hidden rounded-full bg-slate-800">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-emerald-400"
-                    style={{ width: `${overview.progressPct}%` }}
-                  />
+                <Badge className="bg-slate-800 text-slate-300">under Command Center</Badge>
+              </div>
+              <div className="grid min-h-[40vh] flex-1 gap-2 lg:grid-cols-[1fr_220px]">
+                <div className="rounded-xl border border-slate-800/80 bg-slate-900/20 p-3 text-xs text-slate-500">
+                  Feature canvas (intel, alerts, twin hooks, etc.) will land here without competing with
+                  Process Map / Kanban / Gantt tabs.
                 </div>
-                <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/5 p-4">
-                  <div className="flex items-center gap-2 text-sm font-medium text-cyan-100">
-                    <Flame className="h-4 w-4" /> Your next action
+                <div className="space-y-1.5">
+                  <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                    Jump to project
                   </div>
-                  {overview.nextActionTitle ? (
-                    <div className="mt-2">
-                      <div className="text-white">{overview.nextActionTitle}</div>
-                      <div className="mt-1 text-sm text-slate-400">{overview.nextActionProject}</div>
-                      <div className="mt-3 flex flex-wrap gap-3">
-                        <button
-                          type="button"
-                          onClick={() => setTab("process")}
-                          className="inline-flex items-center gap-1 text-sm text-cyan-300 hover:underline"
-                        >
-                          Open Process Map <ArrowRight className="h-3.5 w-3.5" />
-                        </button>
-                        {overview.nextActionProjectId ? (
-                          <Link
-                            href={`/projects/${overview.nextActionProjectId}`}
-                            className="text-sm text-slate-400 hover:text-slate-200"
-                          >
-                            Project workspace
-                          </Link>
-                        ) : null}
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="mt-2 text-sm text-slate-400">No open assigned work right now.</p>
-                  )}
-                </div>
-              </Card>
-
-              <Card>
-                <div className="mb-3 flex items-center justify-between">
-                  <h3 className="text-base font-medium text-white">Projects</h3>
-                  <Badge className="bg-slate-800 text-slate-300">process-shaped</Badge>
-                </div>
-                <div className="space-y-2">
-                  {overview.projects.map((p) => (
+                  {overview.projects.slice(0, 6).map((p) => (
                     <Link
                       key={p.id}
                       href={`/dashboard?project=${p.id}&tab=process`}
-                      className="block rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm hover:border-cyan-500/30"
+                      className="block truncate rounded-lg border border-slate-800 bg-slate-950/40 px-2.5 py-1.5 text-xs text-slate-200 hover:border-cyan-500/30"
                     >
-                      <div className="font-medium text-white">{p.name}</div>
-                      <div className="text-xs text-slate-500">{p.taskCount} process nodes</div>
+                      {p.name}
+                      <span className="ml-1 text-slate-500">({p.taskCount})</span>
                     </Link>
                   ))}
                 </div>
-                <Link href="/projects" className="mt-4 inline-flex text-sm text-cyan-300 hover:underline">
-                  New / manage projects →
-                </Link>
-              </Card>
-            </div>
+              </div>
+            </Card>
           </div>
         ) : null}
 
         {tab === "process" ? (
-          <div className="flex h-full min-h-[70vh] flex-col">
-            <div className="mb-3">
-              <h2 className="text-lg font-medium text-white">Process Map</h2>
-              <p className="mt-1 text-sm text-slate-400">
-                Full-width swimlane flowchart. Click a node for owner, deadline, blockers, budget, impact,
-                documents, risks, and milestones.
-              </p>
-            </div>
-            <div className="min-h-0 flex-1">
-              <SwimlaneProcessMap nodes={nodes} canEdit={canEdit} onStatusChange={handleStatusChange} />
-            </div>
+          <div className="flex h-full min-h-[calc(100vh-8rem)] flex-col">
+            <SwimlaneProcessMap nodes={nodes} canEdit={canEdit} onStatusChange={handleStatusChange} />
           </div>
         ) : null}
 
         {tab === "kanban" ? (
-          <div className="flex h-full min-h-[70vh] flex-col">
-            <div className="mb-3">
-              <h2 className="text-lg font-medium text-white">Kanban</h2>
-              <p className="mt-1 text-sm text-slate-400">
-                Move cards to update Process Map colors and Gantt health in sync.
-              </p>
-            </div>
-            <div className="min-h-0 flex-1">
-              <LinkedKanban nodes={nodes} canEdit={canEdit} onStatusChange={handleStatusChange} />
-            </div>
+          <div className="flex h-full min-h-[calc(100vh-8rem)] flex-col">
+            <LinkedKanban nodes={nodes} canEdit={canEdit} onStatusChange={handleStatusChange} />
           </div>
         ) : null}
 
         {tab === "gantt" ? (
-          <div className="flex h-full min-h-[70vh] flex-col">
-            <div className="mb-3">
-              <h2 className="text-lg font-medium text-white">Gantt Chart</h2>
-              <p className="mt-1 text-sm text-slate-400">
-                Calendar with Gantt superimposed. Overshot timelines extend in red.
-              </p>
-            </div>
-            <div className="min-h-0 flex-1 overflow-auto">
-              <GanttCalendar nodes={nodes} />
-            </div>
+          <div className="h-full min-h-[calc(100vh-8rem)] overflow-auto">
+            <GanttCalendar nodes={nodes} />
           </div>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+function CompactStat({
+  label,
+  value,
+  hint,
+  icon,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  icon?: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-2">
+      <div className="text-[10px] uppercase tracking-wide text-slate-500">{label}</div>
+      <div className="mt-0.5 flex items-center gap-1.5 text-lg font-semibold text-white">
+        {icon}
+        {value}
+      </div>
+      {hint ? <div className="text-[10px] text-slate-500">{hint}</div> : null}
     </div>
   );
 }

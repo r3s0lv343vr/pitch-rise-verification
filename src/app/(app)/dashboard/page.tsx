@@ -1,10 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/session";
 import { can } from "@/lib/permissions";
-import { PageHeader } from "@/components/ui/card";
 import { CommandCenter } from "@/components/command-center/command-center";
 import type { LinkedTaskNode } from "@/lib/command-center-types";
-import Link from "next/link";
 
 function teamFor(name?: string | null, username?: string | null) {
   const n = `${name ?? ""} ${username ?? ""}`.toLowerCase();
@@ -141,43 +139,26 @@ export default async function DashboardPage({
   });
 
   return (
-    <div className="flex min-h-[calc(100vh-5.5rem)] flex-col">
-      <PageHeader
-        title="Command Center"
-        subtitle="Hamburger navigation frees the canvas. Main, Process Map, Kanban, and Gantt each fill their own tab."
-        actions={
-          <Link
-            href="/projects"
-            className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 hover:border-cyan-400/40"
-          >
-            New / manage projects
-          </Link>
-        }
-      />
-
-      <div className="min-h-0 flex-1">
-        <CommandCenter
-          initialNodes={nodes}
-          canEdit={canEdit}
-          initialTab={initialTab}
-          overview={{
-            activeProjects: projects.length,
-            portfolioBudget: budget,
-            openRisks,
-            processNodes: nodes.length,
-            accounts: usersCount,
-            progressPct,
-            nextActionTitle: next?.title ?? null,
-            nextActionProject: next?.project.name ?? null,
-            nextActionProjectId: next?.projectId ?? null,
-            projects: projects.map((p) => ({
-              id: p.id,
-              name: p.name,
-              taskCount: p._count.tasks,
-            })),
-          }}
-        />
-      </div>
-    </div>
+    <CommandCenter
+      initialNodes={nodes}
+      canEdit={canEdit}
+      initialTab={initialTab}
+      overview={{
+        activeProjects: projects.length,
+        portfolioBudget: budget,
+        openRisks,
+        processNodes: nodes.length,
+        accounts: usersCount,
+        progressPct,
+        nextActionTitle: next?.title ?? null,
+        nextActionProject: next?.project.name ?? null,
+        nextActionProjectId: next?.projectId ?? null,
+        projects: projects.map((p) => ({
+          id: p.id,
+          name: p.name,
+          taskCount: p._count.tasks,
+        })),
+      }}
+    />
   );
 }
