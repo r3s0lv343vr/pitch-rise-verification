@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/session";
 import { Card, PageHeader, Badge } from "@/components/ui/card";
@@ -27,7 +28,7 @@ export default async function ReportsPage() {
     <div>
       <PageHeader
         title="Reports"
-        subtitle="Portfolio health for standups, staff smoke-tests, and operator handoff."
+        subtitle="Portfolio health for standups, staff smoke-tests, and operator handoff. Click a row for owner, team, budget, time, and risk review."
       />
       <Card className="overflow-x-auto">
         <table className="w-full min-w-[720px] text-left text-sm">
@@ -40,12 +41,17 @@ export default async function ReportsPage() {
               <th className="px-2 py-3">Blocked</th>
               <th className="px-2 py-3">Risks</th>
               <th className="px-2 py-3">Progress</th>
+              <th className="px-2 py-3 text-right">Open</th>
             </tr>
           </thead>
           <tbody>
             {rows.map(({ p, done, blocked, pct }) => (
-              <tr key={p.id} className="border-b border-slate-900/80">
-                <td className="px-2 py-3 font-medium text-slate-100">{p.name}</td>
+              <tr key={p.id} className="border-b border-slate-900/80 hover:bg-slate-900/60">
+                <td className="px-2 py-3 font-medium text-slate-100">
+                  <Link href={`/reports/${p.id}`} className="hover:text-cyan-200 hover:underline">
+                    {p.name}
+                  </Link>
+                </td>
                 <td className="px-2 py-3 text-slate-400">{p.owner.name}</td>
                 <td className="px-2 py-3 text-slate-300">{formatCurrency(p.overallBudget)}</td>
                 <td className="px-2 py-3 text-slate-300">
@@ -56,10 +62,21 @@ export default async function ReportsPage() {
                 <td className="px-2 py-3">
                   <Badge className="bg-cyan-500/15 text-cyan-200">{pct}%</Badge>
                 </td>
+                <td className="px-2 py-3 text-right">
+                  <Link
+                    href={`/reports/${p.id}`}
+                    className="inline-flex rounded-lg border border-slate-700 px-2.5 py-1 text-xs font-medium text-cyan-200 hover:border-cyan-500/40 hover:bg-cyan-500/10"
+                  >
+                    View report →
+                  </Link>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
+        {rows.length === 0 ? (
+          <p className="px-2 py-8 text-center text-sm text-slate-500">No active projects to report on.</p>
+        ) : null}
       </Card>
     </div>
   );
