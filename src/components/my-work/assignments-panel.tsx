@@ -25,6 +25,21 @@ export function AssignmentsPanel({
   const blocked = tasks.filter((t) => t.status === "BLOCKED");
   const done = tasks.filter((t) => t.status === "DONE");
 
+  const statusRank: Record<string, number> = {
+    BLOCKED: 0,
+    IN_PROGRESS: 1,
+    IN_REVIEW: 2,
+    TODO: 3,
+    DONE: 4,
+  };
+  const sorted = [...tasks].sort((a, b) => {
+    const sr = (statusRank[a.status] ?? 9) - (statusRank[b.status] ?? 9);
+    if (sr !== 0) return sr;
+    const ad = a.dueDate ? new Date(a.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
+    const bd = b.dueDate ? new Date(b.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
+    return ad - bd;
+  });
+
   return (
     <div className="space-y-4">
       <div>
@@ -51,7 +66,7 @@ export function AssignmentsPanel({
 
       <Card>
         <div className="space-y-3">
-          {tasks.map((task) => (
+          {sorted.map((task) => (
             <div key={task.id} className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>

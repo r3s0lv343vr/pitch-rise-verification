@@ -32,7 +32,7 @@ export default async function MyWorkPage({
         dependencies: { include: { dependsOn: { include: { assignee: true } } } },
         dependents: { include: { task: true } },
       },
-      orderBy: [{ status: "asc" }, { dueDate: "asc" }],
+      orderBy: [{ dueDate: "asc" }, { updatedAt: "desc" }],
     }),
     prisma.timeEntry.findMany({
       where: { userId: session.user.id },
