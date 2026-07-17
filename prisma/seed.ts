@@ -1,4 +1,4 @@
-import { PrismaClient, Role, ProjectStatus, TaskStatus, RiskSeverity, IssuePriority, ChangeStatus, IntegrationProvider } from "@prisma/client";
+import { PrismaClient, Role, ProjectStatus, TaskStatus, RiskSeverity, IssuePriority, ChangeStatus, IntegrationProvider, TimeEntryKind } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import {
   DEFAULT_PROCESS_TEMPLATE,
@@ -9,6 +9,7 @@ import {
 const prisma = new PrismaClient();
 
 async function main() {
+  await prisma.timeEntry.deleteMany();
   await prisma.taskDependency.deleteMany();
   await prisma.task.deleteMany();
   await prisma.milestone.deleteMany();
@@ -297,6 +298,77 @@ async function main() {
         hours: 30,
         notes: "Frontend delivery for baseline + Kanban",
       },
+    });
+  }
+
+  // Sample clock / downtime history for My Work + Command Center correlation
+  const seededTasks = await prisma.task.findMany({
+    where: { projectId: project.id },
+    orderBy: { createdAt: "asc" },
+  });
+  const discuss = seededTasks.find((t) => t.title.toLowerCase().includes("discuss")) ?? seededTasks[1];
+  const evalTask = seededTasks.find((t) => t.title.toLowerCase().includes("evaluation")) ?? seededTasks[2];
+  const now = Date.now();
+  const hours = (h: number) => new Date(now - h * 3600000);
+
+  if (discuss) {
+    await prisma.timeEntry.createMany({
+      data: [
+        {
+          userId: pm.id,
+          projectId: project.id,
+          taskId: discuss.id,
+          kind: TimeEntryKind.WORK,
+          startedAt: hours(8),
+          endedAt: hours(6.2),
+          note: "Stakeholder discussion block",
+        },
+        {
+          userId: pm.id,
+          projectId: project.id,
+          taskId: discuss.id,
+          kind: TimeEntryKind.BREAK,
+          startedAt: hours(6.2),
+          endedAt: hours(5.1),
+          note: "Waiting on stakeholder reply",
+        },
+        {
+          userId: pm.id,
+          projectId: project.id,
+          taskId: discuss.id,
+          kind: TimeEntryKind.WORK,
+          startedAt: hours(5.1),
+          endedAt: hours(3.4),
+          note: "Follow-up notes",
+        },
+        {
+          userId: member.id,
+          projectId: project.id,
+          taskId: evalTask?.id ?? discuss.id,
+          kind: TimeEntryKind.WORK,
+          startedAt: hours(10),
+          endedAt: hours(7.5),
+          note: "Evaluation prep",
+        },
+        {
+          userId: member.id,
+          projectId: project.id,
+          taskId: evalTask?.id ?? discuss.id,
+          kind: TimeEntryKind.BREAK,
+          startedAt: hours(7.5),
+          endedAt: hours(4.8),
+          note: "Blocked on upstream decision",
+        },
+        {
+          userId: randall.id,
+          projectId: project.id,
+          taskId: seededTasks.find((t) => t.title.toLowerCase().includes("delegate"))?.id ?? discuss.id,
+          kind: TimeEntryKind.BREAK,
+          startedAt: hours(12),
+          endedAt: hours(8),
+          note: "Idle while waiting on lane handoff",
+        },
+      ],
     });
   }
 

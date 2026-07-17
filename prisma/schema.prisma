@@ -62,6 +62,11 @@ enum IntegrationProvider {
   GITHUB
 }
 
+enum TimeEntryKind {
+  WORK
+  BREAK
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -80,6 +85,7 @@ model User {
   ownedIssues      Issue[]         @relation("IssueOwner")
   ownedChanges     ChangeRequest[] @relation("ChangeOwner")
   resourceAllocs   ResourceAllocation[]
+  timeEntries      TimeEntry[]
 }
 
 model Organization {
@@ -117,6 +123,7 @@ model Project {
   issues      Issue[]
   changes     ChangeRequest[]
   allocations ResourceAllocation[]
+  timeEntries TimeEntry[]
 
   @@index([ownerId])
   @@index([status])
@@ -190,10 +197,31 @@ model Task {
 
   dependencies  TaskDependency[] @relation("DependentTask")
   dependents    TaskDependency[] @relation("DependencyTask")
+  timeEntries   TimeEntry[]
 
   @@index([projectId])
   @@index([assigneeId])
   @@index([status])
+}
+
+model TimeEntry {
+  id        String        @id @default(cuid())
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId String?
+  project   Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  taskId    String?
+  task      Task?         @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  kind      TimeEntryKind
+  startedAt DateTime      @default(now())
+  endedAt   DateTime?
+  note      String        @default("")
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([userId, kind, endedAt])
+  @@index([taskId])
+  @@index([projectId])
 }
 
 model TaskDependency {

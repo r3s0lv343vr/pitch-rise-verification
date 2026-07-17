@@ -4,6 +4,7 @@ import { can } from "@/lib/permissions";
 import { CommandCenter } from "@/components/command-center/command-center";
 import type { LinkedTaskNode } from "@/lib/command-center-types";
 import type { OverviewSeed } from "@/lib/overview-intel";
+import { rankDowntimeHotspots, summarizeTimeEntries } from "@/lib/time-tracking";
 
 function teamFor(name?: string | null, username?: string | null) {
   const n = `${name ?? ""} ${username ?? ""}`.toLowerCase();
@@ -37,62 +38,74 @@ export default async function DashboardPage({
       ? sp.tab
       : "main";
 
-  const [projects, tasks, milestones, risks, issues, changes, allocations] = await Promise.all([
-    prisma.project.findMany({
-      where: { archived: false },
-      include: { _count: { select: { tasks: true } } },
-      orderBy: { updatedAt: "desc" },
-      take: 8,
-    }),
-    prisma.task.findMany({
-      where: {
-        project: { archived: false },
-        ...(sp.project ? { projectId: sp.project } : {}),
-      },
-      include: {
-        assignee: true,
-        project: {
-          include: {
-            risks: { where: { status: { not: "closed" } }, take: 8 },
-            milestones: true,
-          },
+  const [projects, tasks, milestones, risks, issues, changes, allocations, timeEntries] =
+    await Promise.all([
+      prisma.project.findMany({
+        where: { archived: false },
+        include: { _count: { select: { tasks: true } } },
+        orderBy: { updatedAt: "desc" },
+        take: 8,
+      }),
+      prisma.task.findMany({
+        where: {
+          project: { archived: false },
+          ...(sp.project ? { projectId: sp.project } : {}),
         },
-        milestone: true,
-        dependencies: { include: { dependsOn: true } },
-        dependents: { include: { task: true } },
-      },
-      orderBy: [{ createdAt: "asc" }],
-      take: 80,
-    }),
-    prisma.milestone.findMany({
-      where: { project: { archived: false } },
-      include: { phase: true },
-      orderBy: [{ order: "asc" }],
-    }),
-    prisma.risk.findMany({
-      where: { project: { archived: false } },
-      orderBy: { updatedAt: "desc" },
-      take: 20,
-    }),
-    prisma.issue.findMany({
-      where: { project: { archived: false } },
-      orderBy: { updatedAt: "desc" },
-      take: 20,
-    }),
-    prisma.changeRequest.findMany({
-      where: { project: { archived: false } },
-      orderBy: { updatedAt: "desc" },
-      take: 10,
-    }),
-    prisma.resourceAllocation.findMany({
-      include: { resource: true, user: true },
-    }),
-  ]);
+        include: {
+          assignee: true,
+          project: {
+            include: {
+              risks: { where: { status: { not: "closed" } }, take: 8 },
+              milestones: true,
+            },
+          },
+          milestone: true,
+          dependencies: { include: { dependsOn: true } },
+          dependents: { include: { task: true } },
+        },
+        orderBy: [{ createdAt: "asc" }],
+        take: 80,
+      }),
+      prisma.milestone.findMany({
+        where: { project: { archived: false } },
+        include: { phase: true },
+        orderBy: [{ order: "asc" }],
+      }),
+      prisma.risk.findMany({
+        where: { project: { archived: false } },
+        orderBy: { updatedAt: "desc" },
+        take: 20,
+      }),
+      prisma.issue.findMany({
+        where: { project: { archived: false } },
+        orderBy: { updatedAt: "desc" },
+        take: 20,
+      }),
+      prisma.changeRequest.findMany({
+        where: { project: { archived: false } },
+        orderBy: { updatedAt: "desc" },
+        take: 10,
+      }),
+      prisma.resourceAllocation.findMany({
+        include: { resource: true, user: true },
+      }),
+      prisma.timeEntry.findMany({
+        where: {
+          project: { archived: false },
+          ...(sp.project ? { projectId: sp.project } : {}),
+        },
+        take: 500,
+      }),
+    ]);
 
   const budget = projects.reduce((sum, p) => sum + p.overallBudget, 0);
   const canEdit = can(session.user.role, "task:edit");
+  const timeSummary = summarizeTimeEntries(timeEntries);
+  const topWasteTaskId =
+    Array.from(timeSummary.byTask.entries()).sort((a, b) => b[1].break - a[1].break)[0]?.[0] ?? null;
 
   const nodes: LinkedTaskNode[] = tasks.map((task) => {
+    const taskTime = timeSummary.byTask.get(task.id) ?? { work: 0, break: 0 };
     const milestoneBudget =
       task.milestone?.subBudget ??
       task.project.overallBudget / Math.max(task.project.milestones.length, 1);
@@ -147,8 +160,25 @@ export default async function DashboardPage({
       dependentIds: task.dependents.map((d) => d.taskId),
       isDecision: titleLower.includes("decision") || titleLower.includes("approve"),
       isTerminal: titleLower.includes("complete") || titleLower.includes("start"),
+      wasteMinutes: taskTime.break,
+      workMinutes: taskTime.work,
+      isWasteHotspot: topWasteTaskId === task.id && taskTime.break > 0,
     };
   });
+
+  const downtimeHotspots = rankDowntimeHotspots(
+    nodes.map((n) => ({
+      id: n.id,
+      title: n.title,
+      projectName: n.projectName,
+      status: n.status,
+      team: n.team,
+    })),
+    timeSummary.byTask
+  ).map((h) => ({
+    ...h,
+    // serialize for client
+  }));
 
   const seed: OverviewSeed = {
     portfolioBudget: budget,
@@ -203,6 +233,11 @@ export default async function DashboardPage({
           name: p.name,
           taskCount: p._count.tasks,
         })),
+        downtime: {
+          workMinutes: timeSummary.workMinutes,
+          breakMinutes: timeSummary.breakMinutes,
+          hotspots: downtimeHotspots,
+        },
       }}
     />
   );

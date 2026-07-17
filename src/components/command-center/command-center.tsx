@@ -16,6 +16,7 @@ import {
   type OverviewSeed,
 } from "@/lib/overview-intel";
 import { applyStatusToLinkedNodes, makeLiveActivityEvent } from "@/lib/linked-status";
+import type { DowntimeHotspot } from "@/lib/time-tracking";
 
 export const commandCenterTabs = [
   { id: "main", label: "Overview" },
@@ -29,6 +30,11 @@ export type CommandCenterTabId = (typeof commandCenterTabs)[number]["id"];
 export type CommandCenterOverview = {
   projects: { id: string; name: string; taskCount: number }[];
   seed: OverviewSeed;
+  downtime: {
+    workMinutes: number;
+    breakMinutes: number;
+    hotspots: DowntimeHotspot[];
+  };
 };
 
 export function CommandCenter({
@@ -72,7 +78,7 @@ export function CommandCenter({
   function selectTab(next: CommandCenterTabId, opts?: { projectId?: string | null; taskId?: string | null }) {
     setTab(next);
     if (opts?.taskId) setFocusTaskId(opts.taskId);
-    else if (next !== "kanban" && next !== "gantt") setFocusTaskId(null);
+    else if (next !== "kanban" && next !== "gantt" && next !== "process") setFocusTaskId(null);
 
     const params = new URLSearchParams(searchParams.toString());
     if (next === "main") params.delete("tab");
@@ -159,13 +165,19 @@ export function CommandCenter({
           <OverviewPanel
             intel={liveIntel}
             projects={overview.projects}
+            downtime={overview.downtime}
             onOpenTab={selectTab}
           />
         ) : null}
 
         {tab === "process" ? (
           <div className="flex h-full min-h-[calc(100vh-8rem)] flex-col">
-            <SwimlaneProcessMap nodes={nodes} canEdit={canEdit} onStatusChange={handleStatusChange} />
+            <SwimlaneProcessMap
+              nodes={nodes}
+              canEdit={canEdit}
+              onStatusChange={handleStatusChange}
+              focusTaskId={focusTaskId}
+            />
           </div>
         ) : null}
 

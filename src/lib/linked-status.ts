@@ -22,6 +22,10 @@ export function applyStatusToLinkedNodes(
           ...n,
           status,
           budgetConsumed: Math.round(n.budgetAllocated * statusBurnRatio(status)),
+          // preserve clock-attributed waste/work minutes across status sync
+          wasteMinutes: n.wasteMinutes,
+          workMinutes: n.workMinutes,
+          isWasteHotspot: n.isWasteHotspot,
         }
       : n
   );

@@ -3,6 +3,8 @@
 import { Badge, Card } from "@/components/ui/card";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { OverviewIntel } from "@/lib/overview-intel";
+import type { DowntimeHotspot } from "@/lib/time-tracking";
+import { DowntimeCorrelationPanel } from "@/components/command-center/downtime-panel";
 import {
   Activity,
   AlertTriangle,
@@ -35,10 +37,16 @@ function moneyShort(n: number) {
 export function OverviewPanel({
   intel,
   projects,
+  downtime,
   onOpenTab,
 }: {
   intel: OverviewIntel;
   projects: { id: string; name: string; taskCount: number }[];
+  downtime: {
+    workMinutes: number;
+    breakMinutes: number;
+    hotspots: DowntimeHotspot[];
+  };
   onOpenTab: (
     tab: "main" | "kanban" | "process" | "gantt",
     opts?: { projectId?: string | null; taskId?: string | null }
@@ -257,6 +265,17 @@ export function OverviewPanel({
           <p className="text-sm text-slate-500">No open deadlines on the board.</p>
         ) : null}
       </Card>
+
+      <DowntimeCorrelationPanel
+        workMinutes={downtime.workMinutes}
+        breakMinutes={downtime.breakMinutes}
+        hotspots={downtime.hotspots}
+        onOpenProcess={() =>
+          onOpenTab("process", {
+            taskId: downtime.hotspots[0]?.taskId ?? null,
+          })
+        }
+      />
 
       {/* Activity feed */}
       <Card className="p-4 xl:col-span-12">

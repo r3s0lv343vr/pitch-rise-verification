@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { formatHours } from "@/lib/time-tracking";
 import {
   STATUS_BAR,
   STATUS_LABEL,
@@ -57,12 +58,18 @@ export function SwimlaneProcessMap({
   nodes,
   onStatusChange,
   canEdit,
+  focusTaskId,
 }: {
   nodes: LinkedTaskNode[];
   onStatusChange?: (taskId: string, status: TaskStatusValue) => void;
   canEdit?: boolean;
+  focusTaskId?: string | null;
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (focusTaskId) setOpenId(focusTaskId);
+  }, [focusTaskId]);
 
   const teams = useMemo(() => {
     const set = new Set(nodes.map((n) => n.team));
@@ -146,13 +153,16 @@ export function SwimlaneProcessMap({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap gap-2 text-[11px] text-slate-400">
+      <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
         {(Object.keys(STATUS_LABEL) as TaskStatusValue[]).map((s) => (
           <span key={s} className="inline-flex items-center gap-1.5 rounded-full bg-slate-900 px-2 py-1">
             <span className={cn("h-2 w-2 rounded-full", STATUS_BAR[s])} />
             {STATUS_LABEL[s]}
           </span>
         ))}
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-400/40 bg-rose-500/10 px-2 py-1 text-rose-100">
+          Vibrating ring = most downtime waste
+        </span>
       </div>
 
       <div className="overflow-auto rounded-2xl border border-slate-800 bg-[radial-gradient(circle_at_top,_#1e1b4b_0%,_#020617_55%)]">
@@ -246,7 +256,8 @@ export function SwimlaneProcessMap({
                       : node.isTerminal
                         ? "border-sky-300/50 bg-sky-500/20 text-white"
                         : "border-violet-400/40 bg-violet-700/80 text-white",
-                    open && "ring-2 ring-cyan-300"
+                    open && "ring-2 ring-cyan-300",
+                    node.isWasteHotspot && "waste-hotspot"
                   )}
                 >
                   <div className="flex items-start justify-between gap-1">
@@ -260,6 +271,23 @@ export function SwimlaneProcessMap({
                   >
                     {STATUS_LABEL[node.status]} · {node.owner}
                   </div>
+                  {node.wasteMinutes > 0 ? (
+                    <div
+                      className={cn(
+                        "mt-1 text-[10px] font-semibold",
+                        node.isWasteHotspot
+                          ? node.isDecision
+                            ? "text-rose-700"
+                            : "text-rose-200"
+                          : node.isDecision
+                            ? "text-amber-700"
+                            : "text-amber-200"
+                      )}
+                    >
+                      {node.isWasteHotspot ? "⚠ Most downtime · " : "Downtime "}
+                      {formatHours(node.wasteMinutes)}
+                    </div>
+                  ) : null}
                   <div className={cn("mt-2 h-1.5 w-full rounded-full", STATUS_BAR[node.status])} />
                 </button>
 
@@ -319,6 +347,15 @@ function DropdownDetails({ node }: { node: LinkedTaskNode }) {
         icon={AlertTriangle}
         label="Blockers"
         value={node.blockers.length ? node.blockers.join("; ") : "None"}
+      />
+      <Row
+        icon={AlertTriangle}
+        label="Downtime / breaks"
+        value={
+          node.wasteMinutes > 0
+            ? `${formatHours(node.wasteMinutes)} attributed${node.isWasteHotspot ? " · PRIMARY WASTE HOTSPOT" : ""}`
+            : "None logged"
+        }
       />
       <Row
         icon={Wallet}

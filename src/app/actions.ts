@@ -11,6 +11,7 @@ import {
   RiskSeverity,
   Role,
   TaskStatus,
+  TimeEntryKind,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/session";
@@ -246,6 +247,82 @@ export async function updateTaskStatusAction(formData: FormData) {
     data: { status },
   });
   revalidatePath(`/projects/${task.projectId}`);
+  revalidatePath("/my-work");
+  revalidatePath("/dashboard");
+}
+
+export async function clockInAction(formData: FormData) {
+  const session = await requireSession();
+  const taskId = String(formData.get("taskId") || "").trim() || null;
+  const projectIdRaw = String(formData.get("projectId") || "").trim() || null;
+
+  let projectId = projectIdRaw;
+  if (taskId) {
+    const task = await prisma.task.findUnique({ where: { id: taskId } });
+    if (task) projectId = task.projectId;
+  }
+
+  const open = await prisma.timeEntry.findMany({
+    where: { userId: session.user.id, endedAt: null },
+  });
+
+  const now = new Date();
+  for (const entry of open) {
+    if (entry.kind === TimeEntryKind.WORK) {
+      return; // already clocked in
+    }
+    await prisma.timeEntry.update({
+      where: { id: entry.id },
+      data: { endedAt: now },
+    });
+  }
+
+  await prisma.timeEntry.create({
+    data: {
+      userId: session.user.id,
+      kind: TimeEntryKind.WORK,
+      taskId,
+      projectId,
+      startedAt: now,
+      note: "Clock in",
+    },
+  });
+
+  revalidatePath("/my-work");
+  revalidatePath("/dashboard");
+}
+
+export async function clockOutAction(formData: FormData) {
+  const session = await requireSession();
+  const now = new Date();
+
+  const openWork = await prisma.timeEntry.findFirst({
+    where: { userId: session.user.id, kind: TimeEntryKind.WORK, endedAt: null },
+    orderBy: { startedAt: "desc" },
+  });
+
+  if (!openWork) return;
+
+  await prisma.timeEntry.update({
+    where: { id: openWork.id },
+    data: { endedAt: now },
+  });
+
+  // Start break/downtime attributed to the same task/project until next clock in
+  await prisma.timeEntry.create({
+    data: {
+      userId: session.user.id,
+      kind: TimeEntryKind.BREAK,
+      taskId: openWork.taskId,
+      projectId: openWork.projectId,
+      startedAt: now,
+      note: "Clock out · downtime",
+    },
+  });
+
+  // formData unused but kept for form action signature consistency
+  void formData;
+
   revalidatePath("/my-work");
   revalidatePath("/dashboard");
 }

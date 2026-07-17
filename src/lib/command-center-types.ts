@@ -23,6 +23,10 @@ export type LinkedTaskNode = {
   dependentIds: string[];
   isDecision: boolean;
   isTerminal: boolean;
+  /** Attributed break/downtime minutes from clock tracking */
+  wasteMinutes: number;
+  workMinutes: number;
+  isWasteHotspot: boolean;
 };
 
 export const STATUS_BAR: Record<TaskStatusValue, string> = {
