@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { setTaskStatus } from "@/app/actions";
 import { SwimlaneProcessMap } from "@/components/command-center/swimlane-process-map";
 import { LinkedKanban } from "@/components/command-center/linked-kanban";
@@ -10,7 +10,12 @@ import { GanttCalendar } from "@/components/command-center/gantt-calendar";
 import { OverviewPanel } from "@/components/command-center/overview-panel";
 import { cn } from "@/lib/utils";
 import type { LinkedTaskNode, TaskStatusValue } from "@/lib/command-center-types";
-import type { OverviewIntel } from "@/lib/overview-intel";
+import {
+  buildOverviewIntelFromNodes,
+  type OverviewActivityItem,
+  type OverviewSeed,
+} from "@/lib/overview-intel";
+import { applyStatusToLinkedNodes, makeLiveActivityEvent } from "@/lib/linked-status";
 
 export const commandCenterTabs = [
   { id: "main", label: "Overview" },
@@ -23,7 +28,7 @@ export type CommandCenterTabId = (typeof commandCenterTabs)[number]["id"];
 
 export type CommandCenterOverview = {
   projects: { id: string; name: string; taskCount: number }[];
-  intel: OverviewIntel;
+  seed: OverviewSeed;
 };
 
 export function CommandCenter({
@@ -38,8 +43,11 @@ export function CommandCenter({
   overview: CommandCenterOverview;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [tab, setTab] = useState<CommandCenterTabId>(initialTab);
   const [nodes, setNodes] = useState(initialNodes);
+  const [liveActivity, setLiveActivity] = useState<OverviewActivityItem[]>([]);
+  const [focusTaskId, setFocusTaskId] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
 
@@ -56,22 +64,44 @@ export function CommandCenter({
     [nodes]
   );
 
-  function selectTab(next: CommandCenterTabId) {
+  const liveIntel = useMemo(
+    () => buildOverviewIntelFromNodes(nodes, overview.seed, liveActivity),
+    [nodes, overview.seed, liveActivity]
+  );
+
+  function selectTab(next: CommandCenterTabId, opts?: { projectId?: string | null; taskId?: string | null }) {
     setTab(next);
-    const url = next === "main" ? "/dashboard" : `/dashboard?tab=${next}`;
-    router.replace(url, { scroll: false });
+    if (opts?.taskId) setFocusTaskId(opts.taskId);
+    else if (next !== "kanban" && next !== "gantt") setFocusTaskId(null);
+
+    const params = new URLSearchParams(searchParams.toString());
+    if (next === "main") params.delete("tab");
+    else params.set("tab", next);
+
+    if (opts && "projectId" in opts) {
+      if (opts.projectId) params.set("project", opts.projectId);
+      else params.delete("project");
+    }
+
+    const qs = params.toString();
+    router.replace(qs ? `/dashboard?${qs}` : "/dashboard", { scroll: false });
   }
 
   function handleStatusChange(taskId: string, status: TaskStatusValue) {
     const previous = nodes;
-    setNodes((curr) => curr.map((n) => (n.id === taskId ? { ...n, status } : n)));
-    setMessage("Linked views updated.");
+    const current = nodes.find((n) => n.id === taskId);
+    const nextNodes = applyStatusToLinkedNodes(nodes, taskId, status);
+    setNodes(nextNodes);
+    if (current) {
+      setLiveActivity((prev) => [makeLiveActivityEvent(current, status), ...prev].slice(0, 8));
+    }
+    setMessage("Linked sync: Overview, Kanban, Process Workflow Map, and Gantt updated together.");
 
     startTransition(async () => {
       const res = await setTaskStatus(taskId, status);
       if (!res.ok) {
         setNodes(previous);
-        setMessage("Could not save status. Reverted.");
+        setMessage("Could not save status. Linked views reverted.");
         return;
       }
       router.refresh();
@@ -106,6 +136,9 @@ export function CommandCenter({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2.5 py-1 text-[11px] text-cyan-100">
+            One status model · all views linked
+          </span>
           <span className="text-[11px] text-slate-500">
             {projectNames.length} projects · {nodes.length} nodes
             {pending ? " · saving…" : ""}
@@ -123,7 +156,11 @@ export function CommandCenter({
 
       <div className="min-h-0 flex-1">
         {tab === "main" ? (
-          <OverviewPanel intel={overview.intel} projects={overview.projects} />
+          <OverviewPanel
+            intel={liveIntel}
+            projects={overview.projects}
+            onOpenTab={selectTab}
+          />
         ) : null}
 
         {tab === "process" ? (
@@ -134,13 +171,23 @@ export function CommandCenter({
 
         {tab === "kanban" ? (
           <div className="flex h-full min-h-[calc(100vh-8rem)] flex-col">
-            <LinkedKanban nodes={nodes} canEdit={canEdit} onStatusChange={handleStatusChange} />
+            <LinkedKanban
+              nodes={nodes}
+              canEdit={canEdit}
+              onStatusChange={handleStatusChange}
+              focusTaskId={focusTaskId}
+            />
           </div>
         ) : null}
 
         {tab === "gantt" ? (
           <div className="h-full min-h-[calc(100vh-8rem)] overflow-auto">
-            <GanttCalendar nodes={nodes} />
+            <GanttCalendar
+              nodes={nodes}
+              canEdit={canEdit}
+              onStatusChange={handleStatusChange}
+              focusTaskId={focusTaskId}
+            />
           </div>
         ) : null}
       </div>

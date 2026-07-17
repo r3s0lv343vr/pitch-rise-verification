@@ -275,7 +275,7 @@ export function SwimlaneProcessMap({
                     {canEdit && onStatusChange ? (
                       <div className="mt-3 border-t border-slate-800 pt-3">
                         <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                          Move status (updates Process Map + Kanban + Gantt)
+                          Move status (updates Overview + Kanban + Gantt)
                         </label>
                         <select
                           className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-100"

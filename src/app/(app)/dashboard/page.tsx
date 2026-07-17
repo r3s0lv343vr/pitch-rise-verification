@@ -3,7 +3,7 @@ import { requireSession } from "@/lib/session";
 import { can } from "@/lib/permissions";
 import { CommandCenter } from "@/components/command-center/command-center";
 import type { LinkedTaskNode } from "@/lib/command-center-types";
-import { buildOverviewIntel } from "@/lib/overview-intel";
+import type { OverviewSeed } from "@/lib/overview-intel";
 
 function teamFor(name?: string | null, username?: string | null) {
   const n = `${name ?? ""} ${username ?? ""}`.toLowerCase();
@@ -92,57 +92,6 @@ export default async function DashboardPage({
   const budget = projects.reduce((sum, p) => sum + p.overallBudget, 0);
   const canEdit = can(session.user.role, "task:edit");
 
-  const intel = buildOverviewIntel({
-    tasks: tasks.map((t) => ({
-      id: t.id,
-      title: t.title,
-      status: t.status,
-      dueDate: t.dueDate,
-      startDate: t.startDate,
-      estimateHours: t.estimateHours,
-      updatedAt: t.updatedAt,
-      createdAt: t.createdAt,
-      assignee: t.assignee
-        ? { name: t.assignee.name, username: t.assignee.username, role: t.assignee.role }
-        : null,
-      project: {
-        id: t.project.id,
-        name: t.project.name,
-        overallBudget: t.project.overallBudget,
-        endDate: t.project.endDate,
-      },
-      milestone: t.milestone
-        ? {
-            id: t.milestone.id,
-            name: t.milestone.name,
-            status: t.milestone.status,
-            dueDate: t.milestone.dueDate,
-            subBudget: t.milestone.subBudget,
-          }
-        : null,
-    })),
-    milestones: milestones.map((m) => ({
-      id: m.id,
-      name: m.name,
-      status: m.status,
-      dueDate: m.dueDate,
-      phase: m.phase ? { name: m.phase.name, order: m.phase.order } : null,
-    })),
-    risks,
-    issues,
-    changes,
-    allocations: allocations.map((a) => ({
-      hours: a.hours,
-      resource: {
-        name: a.resource.name,
-        type: a.resource.type,
-        capacityHours: a.resource.capacityHours,
-      },
-      user: a.user ? { name: a.user.name, username: a.user.username, role: a.user.role } : null,
-    })),
-    portfolioBudget: budget,
-  });
-
   const nodes: LinkedTaskNode[] = tasks.map((task) => {
     const milestoneBudget =
       task.milestone?.subBudget ??
@@ -201,13 +150,54 @@ export default async function DashboardPage({
     };
   });
 
+  const seed: OverviewSeed = {
+    portfolioBudget: budget,
+    projectEnds: Object.fromEntries(projects.map((p) => [p.id, p.endDate ? p.endDate.toISOString() : null])),
+    milestones: milestones.map((m) => ({
+      id: m.id,
+      name: m.name,
+      status: m.status,
+      dueDate: m.dueDate ? m.dueDate.toISOString() : null,
+      phase: m.phase ? { name: m.phase.name, order: m.phase.order } : null,
+    })),
+    risks: risks.map((r) => ({
+      id: r.id,
+      title: r.title,
+      severity: r.severity,
+      status: r.status,
+      updatedAt: r.updatedAt.toISOString(),
+    })),
+    issues: issues.map((i) => ({
+      id: i.id,
+      title: i.title,
+      priority: i.priority,
+      status: i.status,
+      updatedAt: i.updatedAt.toISOString(),
+    })),
+    changes: changes.map((c) => ({
+      id: c.id,
+      title: c.title,
+      status: c.status,
+      updatedAt: c.updatedAt.toISOString(),
+    })),
+    allocations: allocations.map((a) => ({
+      hours: a.hours,
+      resource: {
+        name: a.resource.name,
+        type: a.resource.type,
+        capacityHours: a.resource.capacityHours,
+      },
+      user: a.user ? { name: a.user.name, username: a.user.username, role: a.user.role } : null,
+    })),
+  };
+
   return (
     <CommandCenter
       initialNodes={nodes}
       canEdit={canEdit}
       initialTab={initialTab}
       overview={{
-        intel,
+        seed,
         projects: projects.map((p) => ({
           id: p.id,
           name: p.name,

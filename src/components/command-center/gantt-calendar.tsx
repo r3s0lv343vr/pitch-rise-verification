@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
   eachDayOfInterval,
   endOfMonth,
@@ -17,8 +17,10 @@ import {
 } from "date-fns";
 import {
   STATUS_BAR,
+  STATUS_COLUMNS,
   STATUS_LABEL,
   type LinkedTaskNode,
+  type TaskStatusValue,
 } from "@/lib/command-center-types";
 import { cn, formatDate } from "@/lib/utils";
 
@@ -28,8 +30,25 @@ function taskRange(node: LinkedTaskNode) {
   return { start, end: end < start ? start : end };
 }
 
-export function GanttCalendar({ nodes }: { nodes: LinkedTaskNode[] }) {
+export function GanttCalendar({
+  nodes,
+  canEdit,
+  onStatusChange,
+  focusTaskId,
+}: {
+  nodes: LinkedTaskNode[];
+  canEdit?: boolean;
+  onStatusChange?: (taskId: string, status: TaskStatusValue) => void;
+  focusTaskId?: string | null;
+}) {
   const today = useMemo(() => new Date(), []);
+  const focusRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (focusTaskId && focusRef.current) {
+      focusRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [focusTaskId]);
 
   const { monthStart, monthEnd, days, rangeStart, spanDays } = useMemo(() => {
     const starts = nodes.map((n) => taskRange(n).start);
@@ -55,7 +74,8 @@ export function GanttCalendar({ nodes }: { nodes: LinkedTaskNode[] }) {
     <div className="space-y-4">
       <p className="text-sm text-slate-400">
         Calendar with Gantt bars superimposed. Overshot (past deadline & not done) extends in{" "}
-        <span className="font-semibold text-red-400">red</span>.
+        <span className="font-semibold text-red-400">red</span>. Status changes sync Overview, Kanban,
+        and Process Workflow Map.
       </p>
 
       <div className="rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
@@ -98,7 +118,8 @@ export function GanttCalendar({ nodes }: { nodes: LinkedTaskNode[] }) {
                         "truncate rounded px-1 text-[9px] text-slate-950",
                         n.status !== "DONE" && n.deadline && parseISO(n.deadline) < today
                           ? "bg-red-400"
-                          : STATUS_BAR[n.status]
+                          : STATUS_BAR[n.status],
+                        focusTaskId === n.id && "ring-1 ring-white"
                       )}
                       title={n.title}
                     >
@@ -131,8 +152,13 @@ export function GanttCalendar({ nodes }: { nodes: LinkedTaskNode[] }) {
               2,
               ((differenceInCalendarDays(end, start) + 1) / spanDays) * 100
             );
+            const focused = focusTaskId === node.id;
             return (
-              <div key={node.id}>
+              <div
+                key={node.id}
+                ref={focused ? focusRef : undefined}
+                className={cn("rounded-xl p-2", focused && "bg-cyan-500/10 ring-1 ring-cyan-400/40")}
+              >
                 <div className="mb-1 flex flex-wrap items-center gap-2 text-xs">
                   <span className="font-medium text-slate-100">{node.title}</span>
                   <span className="text-slate-500">
@@ -142,6 +168,19 @@ export function GanttCalendar({ nodes }: { nodes: LinkedTaskNode[] }) {
                     {formatDate(start)} → {formatDate(end)}
                     {overshot ? <span className="ml-1 text-red-400">· overshot to {formatDate(today)}</span> : null}
                   </span>
+                  {canEdit && onStatusChange ? (
+                    <select
+                      className="ml-auto rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-[11px] text-slate-200"
+                      value={node.status}
+                      onChange={(e) => onStatusChange(node.id, e.target.value as TaskStatusValue)}
+                    >
+                      {STATUS_COLUMNS.map((s) => (
+                        <option key={s} value={s}>
+                          {STATUS_LABEL[s]}
+                        </option>
+                      ))}
+                    </select>
+                  ) : null}
                 </div>
                 <div className="relative h-8 rounded-lg bg-slate-900">
                   <div

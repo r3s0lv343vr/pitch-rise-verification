@@ -1,4 +1,6 @@
 import type { IssuePriority, RiskSeverity, TaskStatus } from "@prisma/client";
+import type { LinkedTaskNode } from "@/lib/command-center-types";
+import { statusBurnRatio } from "@/lib/linked-status";
 
 export type OverviewHealth = {
   overall: number;
@@ -53,6 +55,44 @@ export type OverviewIntel = {
   resources: OverviewResourceRow[];
   activity: OverviewActivityItem[];
   deadlines: OverviewDeadline[];
+};
+
+/** Serializable seed so the client can rebuild Overview when linked nodes change. */
+export type OverviewSeed = {
+  portfolioBudget: number;
+  projectEnds: Record<string, string | null>;
+  milestones: {
+    id: string;
+    name: string;
+    status: TaskStatus;
+    dueDate: string | null;
+    phase: { name: string; order: number } | null;
+  }[];
+  risks: {
+    id: string;
+    title: string;
+    severity: RiskSeverity;
+    status: string;
+    updatedAt: string;
+  }[];
+  issues: {
+    id: string;
+    title: string;
+    priority: IssuePriority;
+    status: string;
+    updatedAt: string;
+  }[];
+  changes: {
+    id: string;
+    title: string;
+    status: string;
+    updatedAt: string;
+  }[];
+  allocations: {
+    hours: number;
+    resource: { name: string; type: string; capacityHours: number };
+    user: { name: string; username: string; role: string } | null;
+  }[];
 };
 
 type TaskLike = {
@@ -185,9 +225,7 @@ export function buildOverviewIntel(input: {
     const base = t.milestone?.subBudget
       ? t.milestone.subBudget / Math.max(tasks.filter((x) => x.milestone?.id === t.milestone?.id).length, 1)
       : allocated / Math.max(tasks.length, 1);
-    const ratio =
-      t.status === "DONE" ? 1 : t.status === "IN_REVIEW" ? 0.75 : t.status === "IN_PROGRESS" ? 0.45 : t.status === "BLOCKED" ? 0.35 : 0.08;
-    return sum + base * ratio;
+    return sum + base * statusBurnRatio(t.status as "TODO" | "IN_PROGRESS" | "IN_REVIEW" | "DONE" | "BLOCKED");
   }, 0);
   const remainingWork = Math.max(allocated - spent, 0);
   // Mild risk/overrun premium when schedule is slipping or risks are hot
@@ -451,4 +489,112 @@ export function buildOverviewIntel(input: {
     activity,
     deadlines,
   };
+}
+
+/** Rebuild Overview from the shared Command Center node model (client-safe). */
+export function buildOverviewIntelFromNodes(
+  nodes: LinkedTaskNode[],
+  seed: OverviewSeed,
+  liveActivity: OverviewActivityItem[] = []
+): OverviewIntel {
+  const milestoneById = Object.fromEntries(seed.milestones.map((m) => [m.id, m]));
+
+  const tasks: TaskLike[] = nodes.map((n) => {
+    const linked = n.linkedMilestones[0];
+    const m = linked ? milestoneById[linked.id] : undefined;
+    return {
+      id: n.id,
+      title: n.title,
+      status: n.status as TaskStatus,
+      dueDate: n.deadline ? new Date(n.deadline) : null,
+      startDate: n.startDate ? new Date(n.startDate) : null,
+      estimateHours: 4,
+      updatedAt: new Date(),
+      createdAt: n.startDate ? new Date(n.startDate) : new Date(),
+      assignee: {
+        name: n.owner,
+        username: n.ownerUsername,
+        role: "MEMBER",
+      },
+      project: {
+        id: n.projectId,
+        name: n.projectName,
+        overallBudget: seed.portfolioBudget,
+        endDate: seed.projectEnds[n.projectId] ? new Date(seed.projectEnds[n.projectId]!) : null,
+      },
+      milestone: m
+        ? {
+            id: m.id,
+            name: m.name,
+            status: n.status as TaskStatus, // stage progress tracks linked task status
+            dueDate: m.dueDate ? new Date(m.dueDate) : null,
+            subBudget: n.budgetAllocated,
+          }
+        : n.linkedMilestones[0]
+          ? {
+              id: n.linkedMilestones[0].id,
+              name: n.linkedMilestones[0].name,
+              status: n.status as TaskStatus,
+              dueDate: n.deadline ? new Date(n.deadline) : null,
+              subBudget: n.budgetAllocated,
+            }
+          : null,
+    };
+  });
+
+  const intel = buildOverviewIntel({
+    tasks,
+    milestones: seed.milestones.map((m) => {
+      const linked = nodes.filter((n) => n.linkedMilestones.some((lm) => lm.id === m.id));
+      let status = m.status;
+      if (linked.length) {
+        if (linked.every((n) => n.status === "DONE")) status = "DONE";
+        else if (linked.some((n) => n.status === "BLOCKED")) status = "BLOCKED";
+        else if (linked.some((n) => n.status === "IN_REVIEW")) status = "IN_REVIEW";
+        else if (linked.some((n) => n.status === "IN_PROGRESS")) status = "IN_PROGRESS";
+        else status = "TODO";
+      }
+      return {
+        id: m.id,
+        name: m.name,
+        status,
+        dueDate: m.dueDate ? new Date(m.dueDate) : null,
+        phase: m.phase,
+      };
+    }),
+    risks: seed.risks.map((r) => ({ ...r, updatedAt: new Date(r.updatedAt) })),
+    issues: seed.issues.map((i) => ({ ...i, updatedAt: new Date(i.updatedAt) })),
+    changes: seed.changes.map((c) => ({ ...c, updatedAt: new Date(c.updatedAt) })),
+    allocations: seed.allocations,
+    portfolioBudget: seed.portfolioBudget,
+  });
+
+  // Align budget spent with the same burn used by Process Map tiles
+  const spentFromNodes = nodes.reduce((sum, n) => sum + n.budgetConsumed, 0);
+  if (nodes.length > 0) {
+    const allocated = seed.portfolioBudget || 1;
+    const remaining = allocated - spentFromNodes;
+    const overdueCount = nodes.filter(
+      (n) => n.status !== "DONE" && n.deadline && new Date(n.deadline) < new Date()
+    ).length;
+    const forecast = spentFromNodes + Math.max(remaining, 0) * (1 + overdueCount * 0.02);
+    const variancePct = ((forecast - allocated) / allocated) * 100;
+    intel.budget = {
+      allocated: Math.round(allocated),
+      spent: Math.round(spentFromNodes),
+      remaining: Math.round(remaining),
+      forecast: Math.round(forecast),
+      variancePct: Math.round(variancePct * 10) / 10,
+      narrative:
+        variancePct <= 0
+          ? `$${Math.round(allocated / 1000)}k allocated · $${Math.round(Math.abs(remaining) / 1000)}k savings runway`
+          : `$${Math.round(forecast / 1000)}k forecast · $${Math.round((forecast - allocated) / 1000)}k further cost from delays`,
+    };
+  }
+
+  if (liveActivity.length) {
+    intel.activity = [...liveActivity, ...intel.activity].slice(0, 12);
+  }
+
+  return intel;
 }

@@ -27,10 +27,10 @@ import { roleLabel } from "@/lib/permissions";
 import type { Role } from "@prisma/client";
 
 const commandCenterViews = [
-  { href: "/dashboard", tab: "main", label: "Overview", icon: Home },
-  { href: "/dashboard?tab=kanban", tab: "kanban", label: "Kanban", icon: Columns3 },
-  { href: "/dashboard?tab=process", tab: "process", label: "Process Workflow Map", icon: Map },
-  { href: "/dashboard?tab=gantt", tab: "gantt", label: "Gantt Chart-Calendar", icon: CalendarRange },
+  { tab: "main", label: "Overview", icon: Home },
+  { tab: "kanban", label: "Kanban", icon: Columns3 },
+  { tab: "process", label: "Process Workflow Map", icon: Map },
+  { tab: "gantt", label: "Gantt Chart-Calendar", icon: CalendarRange },
 ];
 
 const secondaryNav = [
@@ -55,7 +55,16 @@ export function AppShell({
   const [ccOpen, setCcOpen] = useState(true);
 
   const activeTab = searchParams.get("tab") ?? "main";
+  const projectFilter = searchParams.get("project");
   const onCommandCenter = pathname === "/dashboard" || pathname.startsWith("/dashboard/");
+
+  function ccHref(tab: string) {
+    const params = new URLSearchParams();
+    if (tab !== "main") params.set("tab", tab);
+    if (projectFilter) params.set("project", projectFilter);
+    const qs = params.toString();
+    return qs ? `/dashboard?${qs}` : "/dashboard";
+  }
 
   useEffect(() => {
     setOpen(false);
@@ -152,8 +161,8 @@ export function AppShell({
                       const Icon = item.icon;
                       return (
                         <Link
-                          key={item.href}
-                          href={item.href}
+                          key={item.tab}
+                          href={ccHref(item.tab)}
                           className={cn(
                             "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition",
                             active
