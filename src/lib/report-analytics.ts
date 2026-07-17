@@ -79,11 +79,36 @@ type TaskLike = {
   status: TaskStatus;
   estimateHours: number | null;
   dueDate: Date | null;
+  assignee?: { id: string; name: string } | null;
+  dependencies?: { dependsOnId: string }[];
+  dependents?: { taskId: string }[];
   milestone: {
     name: string;
     subBudget: number;
     phase: { name: string; order: number } | null;
   } | null;
+};
+
+export type WorkloadWindow = {
+  completionPct: number;
+  averageDelayDays: number;
+  delayedTaskCount: number;
+  blockedTasks: number;
+  hoursLogged: number;
+  openEstimateHours: number;
+  overloadPeople: { name: string; openTasks: number; openHours: number }[];
+  pressureLabel: "Balanced" | "Watch" | "Overloaded";
+};
+
+export type BottleneckChainNode =
+  | { kind: "gate"; label: string; detail: string; waitingCount: number; status: string }
+  | { kind: "queue"; label: string; waitingCount: number };
+
+export type DependencyBottlenecks = {
+  topLabel: string;
+  waitingOnTop: number;
+  chain: BottleneckChainNode[];
+  ranked: { label: string; waitingCount: number; status: string; title: string }[];
 };
 
 type RiskLike = {
@@ -246,6 +271,15 @@ export function buildReportAnalytics(input: {
     })
     .sort((a, b) => severityWeight(b.severity) - severityWeight(a.severity));
 
+  const workload = buildWorkloadWindow({
+    tasks: input.tasks,
+    timeEntries: input.timeEntries,
+    now,
+    completionPct: progressPct,
+  });
+
+  const bottlenecks = buildDependencyBottlenecks(input.tasks);
+
   return {
     stages: stageOrder
       .map((name) => metrics.get(name))
@@ -258,5 +292,246 @@ export function buildReportAnalytics(input: {
     doneTasks: done,
     totalTasks: input.tasks.length,
     criticalRisks,
+    workload,
+    bottlenecks,
+  };
+}
+
+function daysBetween(a: Date, b: Date) {
+  return (a.getTime() - b.getTime()) / 86400000;
+}
+
+export function buildWorkloadWindow(input: {
+  tasks: TaskLike[];
+  timeEntries: TimeLike[];
+  now?: Date;
+  completionPct?: number;
+}): WorkloadWindow {
+  const now = input.now ?? new Date();
+  const done = input.tasks.filter((t) => t.status === "DONE").length;
+  const completionPct =
+    input.completionPct ?? (input.tasks.length ? clamp((done / input.tasks.length) * 100) : 0);
+
+  const delayed = input.tasks.filter(
+    (t) => t.status !== "DONE" && t.dueDate && t.dueDate.getTime() < now.getTime()
+  );
+  const averageDelayDays = delayed.length
+    ? Math.round(
+        (delayed.reduce((sum, t) => sum + daysBetween(now, t.dueDate!), 0) / delayed.length) * 10
+      ) / 10
+    : 0;
+
+  const blockedTasks = input.tasks.filter((t) => t.status === "BLOCKED").length;
+
+  const hoursLogged =
+    Math.round(
+      (input.timeEntries
+        .filter((e) => e.kind === "WORK")
+        .reduce((sum, e) => sum + entryMinutes(e.startedAt, e.endedAt, now), 0) /
+        60) *
+        10
+    ) / 10;
+
+  const byPerson = new Map<string, { name: string; openTasks: number; openHours: number }>();
+  let openEstimateHours = 0;
+  for (const task of input.tasks) {
+    if (task.status === "DONE") continue;
+    const hrs = task.estimateHours ?? 4;
+    openEstimateHours += hrs;
+    const person = task.assignee;
+    if (!person) continue;
+    const row = byPerson.get(person.id) ?? { name: person.name, openTasks: 0, openHours: 0 };
+    row.openTasks += 1;
+    row.openHours += hrs;
+    byPerson.set(person.id, row);
+  }
+
+  const overloadPeople = [...byPerson.values()]
+    .filter((p) => p.openHours >= 18 || p.openTasks >= 4)
+    .sort((a, b) => b.openHours - a.openHours)
+    .slice(0, 4)
+    .map((p) => ({
+      ...p,
+      openHours: Math.round(p.openHours * 10) / 10,
+    }));
+
+  const pressureLabel: WorkloadWindow["pressureLabel"] =
+    blockedTasks >= 3 || overloadPeople.length >= 2 || averageDelayDays >= 5
+      ? "Overloaded"
+      : blockedTasks >= 1 || overloadPeople.length >= 1 || averageDelayDays >= 2
+        ? "Watch"
+        : "Balanced";
+
+  return {
+    completionPct,
+    averageDelayDays,
+    delayedTaskCount: delayed.length,
+    blockedTasks,
+    hoursLogged,
+    openEstimateHours: Math.round(openEstimateHours * 10) / 10,
+    overloadPeople,
+    pressureLabel,
+  };
+}
+
+function gateLabel(title: string, phaseName?: string | null): string {
+  const t = title.toLowerCase();
+  if (/review|approv|sign.?off|decision|stakeholder/.test(t)) {
+    if (/final|client|complete|delivery/.test(t)) return "Client Signoff";
+    return "Reviewer Approval";
+  }
+  if (/deploy|ship|launch|release/.test(t)) return "Deployment";
+  if (/build|evaluat|revise|implement|delegat|develop|test/.test(t)) return "Build Phase";
+  if (/complete|close|archive|handoff/.test(t)) return "Client Signoff";
+  if (phaseName) {
+    const p = phaseName.toLowerCase();
+    if (/approv|complete/.test(p)) return "Client Signoff";
+    if (/build|evaluat/.test(p)) return "Build Phase";
+  }
+  return title.length > 28 ? `${title.slice(0, 26)}…` : title;
+}
+
+function transitiveWaitingCount(
+  taskId: string,
+  dependentsOf: Map<string, string[]>,
+  statusById: Map<string, TaskStatus>,
+  memo = new Map<string, number>(),
+  stack = new Set<string>()
+): number {
+  if (memo.has(taskId)) return memo.get(taskId)!;
+  if (stack.has(taskId)) return 0;
+  stack.add(taskId);
+  let count = 0;
+  for (const childId of dependentsOf.get(taskId) ?? []) {
+    if (statusById.get(childId) === "DONE") continue;
+    count += 1 + transitiveWaitingCount(childId, dependentsOf, statusById, memo, stack);
+  }
+  stack.delete(taskId);
+  memo.set(taskId, count);
+  return count;
+}
+
+export function buildDependencyBottlenecks(tasks: TaskLike[]): DependencyBottlenecks {
+  const statusById = new Map(tasks.map((t) => [t.id, t.status]));
+  const taskById = new Map(tasks.map((t) => [t.id, t]));
+  const dependentsOf = new Map<string, string[]>();
+
+  for (const task of tasks) {
+    for (const dep of task.dependencies ?? []) {
+      const list = dependentsOf.get(dep.dependsOnId) ?? [];
+      list.push(task.id);
+      dependentsOf.set(dep.dependsOnId, list);
+    }
+    // Prefer explicit dependents relation when present
+    for (const d of task.dependents ?? []) {
+      const list = dependentsOf.get(task.id) ?? [];
+      if (!list.includes(d.taskId)) list.push(d.taskId);
+      dependentsOf.set(task.id, list);
+    }
+  }
+
+  const scored = tasks
+    .filter((t) => t.status !== "DONE")
+    .map((t) => {
+      const waitingCount = transitiveWaitingCount(t.id, dependentsOf, statusById);
+      const directWaiting = (dependentsOf.get(t.id) ?? []).filter((id) => statusById.get(id) !== "DONE").length;
+      let score = waitingCount * 10 + directWaiting * 6;
+      if (t.status === "IN_REVIEW") score += 25;
+      if (t.status === "BLOCKED") score += 30;
+      if (t.status === "IN_PROGRESS") score += 8;
+      return {
+        task: t,
+        waitingCount: Math.max(waitingCount, directWaiting),
+        directWaiting,
+        score,
+        label: gateLabel(t.title, t.milestone?.phase?.name),
+      };
+    })
+    .sort((a, b) => b.score - a.score || b.waitingCount - a.waitingCount);
+
+  const ranked = scored.slice(0, 5).map((s) => ({
+    label: s.label,
+    waitingCount: s.waitingCount,
+    status: s.task.status,
+    title: s.task.title,
+  }));
+
+  const top = scored[0];
+  if (!top) {
+    return {
+      topLabel: "No open bottlenecks",
+      waitingOnTop: 0,
+      chain: [],
+      ranked: [],
+    };
+  }
+
+  // Walk heaviest downstream path to form a readable bottleneck chain
+  const chainTasks: TaskLike[] = [top.task];
+  let cursor = top.task.id;
+  const seen = new Set<string>([cursor]);
+  for (let i = 0; i < 4; i++) {
+    const children = (dependentsOf.get(cursor) ?? [])
+      .map((id) => taskById.get(id))
+      .filter((t): t is TaskLike => !!t && t.status !== "DONE" && !seen.has(t.id));
+    if (!children.length) break;
+    children.sort(
+      (a, b) =>
+        transitiveWaitingCount(b.id, dependentsOf, statusById) -
+        transitiveWaitingCount(a.id, dependentsOf, statusById)
+    );
+    const next = children[0];
+    chainTasks.push(next);
+    seen.add(next.id);
+    cursor = next.id;
+  }
+
+  // Ensure late-stage gates appear when present in open work
+  const ensureLabels = ["Build Phase", "Deployment", "Client Signoff"];
+  for (const label of ensureLabels) {
+    if (chainTasks.some((t) => gateLabel(t.title, t.milestone?.phase?.name) === label)) continue;
+    const candidate = scored.find((s) => s.label === label && !seen.has(s.task.id));
+    if (candidate) {
+      chainTasks.push(candidate.task);
+      seen.add(candidate.task.id);
+    }
+  }
+
+  const chain: BottleneckChainNode[] = [];
+  chainTasks.forEach((task, idx) => {
+    const waitingCount = transitiveWaitingCount(task.id, dependentsOf, statusById);
+    const directWaiting = (dependentsOf.get(task.id) ?? []).filter((id) => statusById.get(id) !== "DONE").length;
+    const label = gateLabel(task.title, task.milestone?.phase?.name);
+    chain.push({
+      kind: "gate",
+      label,
+      detail: task.title,
+      waitingCount: Math.max(waitingCount, directWaiting),
+      status: task.status,
+    });
+    if (idx === 0 && Math.max(waitingCount, directWaiting) > 0) {
+      chain.push({
+        kind: "queue",
+        label: `${Math.max(waitingCount, directWaiting)} task${
+          Math.max(waitingCount, directWaiting) === 1 ? "" : "s"
+        } waiting`,
+        waitingCount: Math.max(waitingCount, directWaiting),
+      });
+    }
+  });
+
+  // Deduplicate consecutive identical gate labels
+  const deduped: BottleneckChainNode[] = [];
+  for (const node of chain) {
+    const prev = deduped[deduped.length - 1];
+    if (prev && prev.kind === "gate" && node.kind === "gate" && prev.label === node.label) continue;
+    deduped.push(node);
+  }
+
+  return {
+    topLabel: top.label,
+    waitingOnTop: top.waitingCount,
+    chain: deduped.slice(0, 7),
+    ranked,
   };
 }

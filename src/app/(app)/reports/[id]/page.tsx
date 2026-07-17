@@ -13,6 +13,8 @@ import {
   TimeChart,
 } from "@/components/reports/report-charts";
 import { RiskReviewDeck } from "@/components/reports/risk-review-deck";
+import { WorkloadWindowPanel } from "@/components/reports/workload-window";
+import { DependencyBottlenecksPanel } from "@/components/reports/dependency-bottlenecks";
 
 export default async function ReportDetailPage({
   params,
@@ -40,6 +42,9 @@ export default async function ReportDetailPage({
           status: true,
           estimateHours: true,
           dueDate: true,
+          assignee: { select: { id: true, name: true } },
+          dependencies: { select: { dependsOnId: true } },
+          dependents: { select: { taskId: true } },
           milestone: {
             select: {
               name: true,
@@ -143,6 +148,10 @@ export default async function ReportDetailPage({
         doneTasks={analytics.doneTasks}
         totalTasks={analytics.totalTasks}
       />
+
+      <WorkloadWindowPanel workload={analytics.workload} />
+
+      <DependencyBottlenecksPanel bottlenecks={analytics.bottlenecks} />
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card>
