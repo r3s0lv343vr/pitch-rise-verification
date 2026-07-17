@@ -32,7 +32,9 @@ export function ScheduleTrendChart({ trend }: { trend: TrendAnalysis["schedule"]
         <CalendarClock className="h-4 w-4 text-cyan-300" />
         <h3 className="font-display text-base font-semibold text-white">Schedule Trend Analysis</h3>
       </div>
-      <p className="text-xs text-slate-400">How has schedule performance evolved?</p>
+      <p className="text-xs text-slate-400">
+        How has schedule performance evolved? Planned vs actual completion from the Gantt plan.
+      </p>
 
       <div className="mt-3 flex flex-wrap gap-2">
         <Badge className="bg-slate-800 text-slate-200">
