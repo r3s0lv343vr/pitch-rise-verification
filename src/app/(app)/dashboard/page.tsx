@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/session";
 import { can } from "@/lib/permissions";
 import { CommandCenter } from "@/components/command-center/command-center";
 import type { LinkedTaskNode } from "@/lib/command-center-types";
+import { buildOverviewIntel } from "@/lib/overview-intel";
 
 function teamFor(name?: string | null, username?: string | null) {
   const n = `${name ?? ""} ${username ?? ""}`.toLowerCase();
@@ -36,7 +37,7 @@ export default async function DashboardPage({
       ? sp.tab
       : "main";
 
-  const [projects, tasks, openRisks, usersCount, doneTasks, totalTasks, myTasks] = await Promise.all([
+  const [projects, tasks, milestones, risks, issues, changes, allocations] = await Promise.all([
     prisma.project.findMany({
       where: { archived: false },
       include: { _count: { select: { tasks: true } } },
@@ -61,24 +62,86 @@ export default async function DashboardPage({
         dependents: { include: { task: true } },
       },
       orderBy: [{ createdAt: "asc" }],
-      take: 60,
+      take: 80,
     }),
-    prisma.risk.count({ where: { status: { not: "closed" } } }),
-    prisma.user.count(),
-    prisma.task.count({ where: { status: "DONE" } }),
-    prisma.task.count(),
-    prisma.task.findMany({
-      where: { assigneeId: session.user.id, status: { not: "DONE" } },
-      include: { project: true },
-      orderBy: { dueDate: "asc" },
-      take: 1,
+    prisma.milestone.findMany({
+      where: { project: { archived: false } },
+      include: { phase: true },
+      orderBy: [{ order: "asc" }],
+    }),
+    prisma.risk.findMany({
+      where: { project: { archived: false } },
+      orderBy: { updatedAt: "desc" },
+      take: 20,
+    }),
+    prisma.issue.findMany({
+      where: { project: { archived: false } },
+      orderBy: { updatedAt: "desc" },
+      take: 20,
+    }),
+    prisma.changeRequest.findMany({
+      where: { project: { archived: false } },
+      orderBy: { updatedAt: "desc" },
+      take: 10,
+    }),
+    prisma.resourceAllocation.findMany({
+      include: { resource: true, user: true },
     }),
   ]);
 
   const budget = projects.reduce((sum, p) => sum + p.overallBudget, 0);
   const canEdit = can(session.user.role, "task:edit");
-  const progressPct = totalTasks === 0 ? 0 : Math.round((doneTasks / totalTasks) * 100);
-  const next = myTasks[0] ?? null;
+
+  const intel = buildOverviewIntel({
+    tasks: tasks.map((t) => ({
+      id: t.id,
+      title: t.title,
+      status: t.status,
+      dueDate: t.dueDate,
+      startDate: t.startDate,
+      estimateHours: t.estimateHours,
+      updatedAt: t.updatedAt,
+      createdAt: t.createdAt,
+      assignee: t.assignee
+        ? { name: t.assignee.name, username: t.assignee.username, role: t.assignee.role }
+        : null,
+      project: {
+        id: t.project.id,
+        name: t.project.name,
+        overallBudget: t.project.overallBudget,
+        endDate: t.project.endDate,
+      },
+      milestone: t.milestone
+        ? {
+            id: t.milestone.id,
+            name: t.milestone.name,
+            status: t.milestone.status,
+            dueDate: t.milestone.dueDate,
+            subBudget: t.milestone.subBudget,
+          }
+        : null,
+    })),
+    milestones: milestones.map((m) => ({
+      id: m.id,
+      name: m.name,
+      status: m.status,
+      dueDate: m.dueDate,
+      phase: m.phase ? { name: m.phase.name, order: m.phase.order } : null,
+    })),
+    risks,
+    issues,
+    changes,
+    allocations: allocations.map((a) => ({
+      hours: a.hours,
+      resource: {
+        name: a.resource.name,
+        type: a.resource.type,
+        capacityHours: a.resource.capacityHours,
+      },
+      user: a.user ? { name: a.user.name, username: a.user.username, role: a.user.role } : null,
+    })),
+    portfolioBudget: budget,
+  });
 
   const nodes: LinkedTaskNode[] = tasks.map((task) => {
     const milestoneBudget =
@@ -144,15 +207,7 @@ export default async function DashboardPage({
       canEdit={canEdit}
       initialTab={initialTab}
       overview={{
-        activeProjects: projects.length,
-        portfolioBudget: budget,
-        openRisks,
-        processNodes: nodes.length,
-        accounts: usersCount,
-        progressPct,
-        nextActionTitle: next?.title ?? null,
-        nextActionProject: next?.project.name ?? null,
-        nextActionProjectId: next?.projectId ?? null,
+        intel,
         projects: projects.map((p) => ({
           id: p.id,
           name: p.name,
