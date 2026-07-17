@@ -43,3 +43,18 @@ git push -u origin participants/summer26/phase-1-project-1/r3s0lv343vr
 ```
 
 Do **not** merge unless you decide to.
+
+## 5) Sustained preview tunnel (Cloud Agent / local demo)
+
+Quick `trycloudflare.com` URLs die when the process stops and change on restart.
+
+This repo includes an auto-restart supervisor:
+
+```bash
+# from the runtime app directory (keeps cloudflared alive + writes PUBLIC_URL.txt)
+./scripts/sustained-tunnel.sh 3000
+```
+
+- Current public URL is written to `PUBLIC_URL.txt` (gitignored) and synced into `.env` as `NEXTAUTH_URL`.
+- Restart Next after a URL change so Auth.js picks up the new host.
+- For a **stable** HTTPS hostname that does not rotate, use **Vercel** (steps 1–3 above) or a **named Cloudflare Tunnel** on a domain you control (requires Cloudflare login + DNS).
