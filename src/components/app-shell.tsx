@@ -27,10 +27,10 @@ import { roleLabel } from "@/lib/permissions";
 import type { Role } from "@prisma/client";
 
 const commandCenterViews = [
-  { href: "/dashboard", tab: "main", label: "Main", icon: Home },
-  { href: "/dashboard?tab=process", tab: "process", label: "Process Map", icon: Map },
+  { href: "/dashboard", tab: "main", label: "Overview", icon: Home },
   { href: "/dashboard?tab=kanban", tab: "kanban", label: "Kanban", icon: Columns3 },
-  { href: "/dashboard?tab=gantt", tab: "gantt", label: "Gantt Chart", icon: CalendarRange },
+  { href: "/dashboard?tab=process", tab: "process", label: "Process Workflow Map", icon: Map },
+  { href: "/dashboard?tab=gantt", tab: "gantt", label: "Gantt Chart-Calendar", icon: CalendarRange },
 ];
 
 const secondaryNav = [

@@ -13,10 +13,10 @@ import type { LinkedTaskNode, TaskStatusValue } from "@/lib/command-center-types
 import { AlertTriangle, ArrowRight, Flame } from "lucide-react";
 
 export const commandCenterTabs = [
-  { id: "main", label: "Main" },
-  { id: "process", label: "Process Map" },
+  { id: "main", label: "Overview" },
   { id: "kanban", label: "Kanban" },
-  { id: "gantt", label: "Gantt Chart" },
+  { id: "process", label: "Process Workflow Map" },
+  { id: "gantt", label: "Gantt Chart-Calendar" },
 ] as const;
 
 export type CommandCenterTabId = (typeof commandCenterTabs)[number]["id"];
