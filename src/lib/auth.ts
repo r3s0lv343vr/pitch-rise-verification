@@ -71,7 +71,13 @@ export const authOptions: NextAuthOptions = {
         return token;
       }
 
-      // After DB reseed, JWT ids go stale — re-bind from email so My Work assignments still load.
+      // After DB reseed, JWT ids can go stale. Only hit the DB when the token
+      // is missing identity fields — every request used to query and exhaust
+      // the Supabase session pool on Vercel.
+      if (token.id && token.role && token.username) {
+        return token;
+      }
+
       const email = typeof token.email === "string" ? token.email.toLowerCase() : null;
       if (email) {
         const dbUser = await prisma.user.findUnique({ where: { email } });

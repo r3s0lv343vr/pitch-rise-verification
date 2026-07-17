@@ -15,6 +15,14 @@ git push -u origin agent/pm-platform-phase1:main
 ## 2) Database
 1. Prefer claiming the temporary Prisma Postgres used during build (claim URL: https://create-db.prisma.io/claim?projectID=proj_r5nmgv30oxxosxgbhx9p3qcy&utm_source=create-db&utm_medium=cli (expires ~24h from creation)) OR create Neon/Supabase Postgres.
 2. Copy the connection string into Vercel env as `DATABASE_URL`.
+3. **Supabase + Vercel (required):** use the **Transaction pooler** (port **6543**), not Session mode (5432). Session pooler caps ~15 clients and will throw `EMAXCONNSESSION` / “max clients reached” under serverless concurrency.
+
+```text
+postgresql://postgres.<PROJECT_REF>:<URL_ENCODED_PASSWORD>@aws-0-<REGION>.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1&sslmode=require
+```
+
+   - Encode special password characters (`@` → `%40`, `!` → `%21`).
+   - Keep using the Session/direct URL locally for `prisma migrate` / `db push` if Transaction mode rejects migrations.
 
 ## 3) Vercel
 1. Import `pm-r3s0lv343vr` (or this branch) in Vercel (account already linked).
