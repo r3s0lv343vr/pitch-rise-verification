@@ -2,8 +2,8 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 const tabs = [
-  { slug: "", label: "Executive Summary" },
-  { slug: "insights", label: "Insights" },
+  { slug: "", label: "Insights" },
+  { slug: "trend-analysis", label: "Trend Analysis" },
 ] as const;
 
 export function ReportTabs({
@@ -11,7 +11,7 @@ export function ReportTabs({
   current,
 }: {
   reportId: string;
-  current: "" | "insights";
+  current: "" | "trend-analysis";
 }) {
   return (
     <div className="mb-6 flex flex-wrap gap-1.5 border-b border-slate-800 pb-3">

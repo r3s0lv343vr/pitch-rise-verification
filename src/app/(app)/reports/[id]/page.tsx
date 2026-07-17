@@ -16,8 +16,8 @@ import { WorkloadWindowPanel } from "@/components/reports/workload-window";
 import { DependencyBottlenecksPanel } from "@/components/reports/dependency-bottlenecks";
 import { ResourceReallocationPanel } from "@/components/reports/resource-reallocation";
 
-/** Tab: Executive Summary — full project report rollup */
-export default async function ReportExecutiveSummaryPage({
+/** Tab: Insights — full project report rollup */
+export default async function ReportInsightsPage({
   params,
 }: {
   params: Promise<{ id: string }>;
