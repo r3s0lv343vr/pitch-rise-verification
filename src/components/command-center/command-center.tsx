@@ -95,7 +95,7 @@ export function CommandCenter({
               Command Center
             </span>
           </h1>
-          <div className="mt-2.5 flex flex-wrap gap-1.5">
+          <div className="mt-5 flex flex-wrap gap-1.5">
             {commandCenterTabs.map((t) => (
               <button
                 key={t.id}
