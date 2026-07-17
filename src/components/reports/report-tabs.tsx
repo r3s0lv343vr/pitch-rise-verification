@@ -2,8 +2,8 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 const tabs = [
-  { slug: "", label: "Insights" },
   { slug: "trend-analysis", label: "Trend Analysis" },
+  { slug: "", label: "Insights" },
 ] as const;
 
 export function ReportTabs({
