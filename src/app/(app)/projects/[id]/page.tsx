@@ -45,7 +45,8 @@ export default async function ProjectOverviewPage({
           updates: { include: { author: true }, orderBy: { createdAt: "desc" }, take: 3 },
           dependencies: true,
         },
-        orderBy: { createdAt: "desc" },
+        // Oldest first: starter process tasks stay at the top; new tasks append below (start → finish).
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
         where: {
           ...(sp.status ? { status: sp.status as never } : {}),
           ...(sp.assignee
@@ -122,7 +123,7 @@ export default async function ProjectOverviewPage({
             <div>
               <h2 className="text-lg font-medium text-white">Task List</h2>
               <p className="mt-1 text-xs text-slate-500">
-                Saved tasks for this project. Each card is highlighted so you can see where a task starts.
+                Start-to-finish ladder: starter process tasks stay at the top; new tasks append below.
               </p>
             </div>
             <form className="flex flex-wrap gap-2">
