@@ -67,21 +67,21 @@ export function OverviewPanel({
         <div className="flex flex-wrap gap-2 text-[11px]">
           <button
             type="button"
-            onClick={() => onOpenTab("kanban")}
+            onClick={() => onOpenTab("kanban", { projectId: projects[0]?.id ?? null })}
             className="rounded-full border border-slate-700 bg-slate-950 px-2.5 py-1 text-slate-300 hover:border-cyan-400/40 hover:text-cyan-100"
           >
             Open Kanban
           </button>
           <button
             type="button"
-            onClick={() => onOpenTab("process")}
+            onClick={() => onOpenTab("process", { projectId: projects[0]?.id ?? null })}
             className="rounded-full border border-slate-700 bg-slate-950 px-2.5 py-1 text-slate-300 hover:border-cyan-400/40 hover:text-cyan-100"
           >
             Open Process Workflow Map
           </button>
           <button
             type="button"
-            onClick={() => onOpenTab("gantt")}
+            onClick={() => onOpenTab("gantt", { projectId: projects[0]?.id ?? null })}
             className="rounded-full border border-slate-700 bg-slate-950 px-2.5 py-1 text-slate-300 hover:border-cyan-400/40 hover:text-cyan-100"
           >
             Open Gantt Chart-Calendar
@@ -272,6 +272,12 @@ export function OverviewPanel({
         hotspots={downtime.hotspots}
         onOpenProcess={() =>
           onOpenTab("process", {
+            projectId:
+              downtime.hotspots[0]
+                ? projects.find((p) => p.name === downtime.hotspots[0]?.projectName)?.id ??
+                  projects[0]?.id ??
+                  null
+                : projects[0]?.id ?? null,
             taskId: downtime.hotspots[0]?.taskId ?? null,
           })
         }

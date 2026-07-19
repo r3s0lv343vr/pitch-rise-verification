@@ -42,11 +42,15 @@ export function CommandCenter({
   canEdit,
   initialTab = "main",
   overview,
+  selectedProjectId = null,
+  selectedProjectName = null,
 }: {
   initialNodes: LinkedTaskNode[];
   canEdit: boolean;
   initialTab?: CommandCenterTabId;
   overview: CommandCenterOverview;
+  selectedProjectId?: string | null;
+  selectedProjectName?: string | null;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -65,17 +69,23 @@ export function CommandCenter({
     setNodes(initialNodes);
   }, [initialNodes]);
 
-  const projectNames = useMemo(
-    () => Array.from(new Set(nodes.map((n) => n.projectName))),
-    [nodes]
-  );
+  const activeProjectId = selectedProjectId || searchParams.get("project");
+
+  // Hard client-side guard: never mix projects in linked views.
+  const viewNodes = useMemo(() => {
+    if (!activeProjectId) return nodes;
+    return nodes.filter((n) => n.projectId === activeProjectId);
+  }, [nodes, activeProjectId]);
 
   const liveIntel = useMemo(
-    () => buildOverviewIntelFromNodes(nodes, overview.seed, liveActivity),
-    [nodes, overview.seed, liveActivity]
+    () => buildOverviewIntelFromNodes(viewNodes, overview.seed, liveActivity),
+    [viewNodes, overview.seed, liveActivity]
   );
 
-  function selectTab(next: CommandCenterTabId, opts?: { projectId?: string | null; taskId?: string | null }) {
+  function selectTab(
+    next: CommandCenterTabId,
+    opts?: { projectId?: string | null; taskId?: string | null }
+  ) {
     setTab(next);
     if (opts?.taskId) setFocusTaskId(opts.taskId);
     else if (next !== "kanban" && next !== "gantt" && next !== "process") setFocusTaskId(null);
@@ -87,6 +97,12 @@ export function CommandCenter({
     if (opts && "projectId" in opts) {
       if (opts.projectId) params.set("project", opts.projectId);
       else params.delete("project");
+    } else if (
+      (next === "process" || next === "kanban" || next === "gantt") &&
+      !params.get("project") &&
+      overview.projects[0]
+    ) {
+      params.set("project", overview.projects[0].id);
     }
 
     const qs = params.toString();
@@ -113,6 +129,8 @@ export function CommandCenter({
       router.refresh();
     });
   }
+
+  const linkedView = tab === "process" || tab === "kanban" || tab === "gantt";
 
   return (
     <div className="flex min-h-[calc(100vh-4.25rem)] flex-col">
@@ -142,21 +160,58 @@ export function CommandCenter({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-xs text-slate-300">
+            <span className="text-slate-500">Project</span>
+            <select
+              className="max-w-[220px] bg-transparent text-sm font-medium text-cyan-100 outline-none"
+              value={activeProjectId || ""}
+              onChange={(e) => {
+                const projectId = e.target.value || null;
+                selectTab(tab === "main" ? "process" : tab, { projectId });
+              }}
+            >
+              {overview.projects.length === 0 ? (
+                <option value="">No projects yet</option>
+              ) : (
+                overview.projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} ({p.taskCount})
+                  </option>
+                ))
+              )}
+            </select>
+          </label>
           <span className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2.5 py-1 text-[11px] text-cyan-100">
-            One status model · all views linked
+            One project · linked views
           </span>
           <span className="text-[11px] text-slate-500">
-            {projectNames.length} projects · {nodes.length} nodes
+            {selectedProjectName || "Select a project"} · {viewNodes.length} tasks
             {pending ? " · saving…" : ""}
           </span>
-          <Link
-            href="/projects"
-            className="rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-xs text-slate-200 hover:border-cyan-400/40"
-          >
-            Manage projects
-          </Link>
+          {activeProjectId ? (
+            <Link
+              href={`/projects/${activeProjectId}/map`}
+              className="rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-xs text-slate-200 hover:border-cyan-400/40"
+            >
+              Open Project Map
+            </Link>
+          ) : (
+            <Link
+              href="/projects"
+              className="rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-xs text-slate-200 hover:border-cyan-400/40"
+            >
+              Manage projects
+            </Link>
+          )}
         </div>
       </div>
+
+      {linkedView ? (
+        <p className="mb-2 text-xs text-slate-400">
+          Showing <span className="text-cyan-200">{selectedProjectName || "one project"}</span> only —
+          built from that project’s tasks and dependency links (same source as Project Map).
+        </p>
+      ) : null}
 
       {message ? <p className="mb-2 text-xs text-cyan-300/90">{message}</p> : null}
 
@@ -172,19 +227,29 @@ export function CommandCenter({
 
         {tab === "process" ? (
           <div className="flex h-full min-h-[calc(100vh-8rem)] flex-col">
-            <SwimlaneProcessMap
-              nodes={nodes}
-              canEdit={canEdit}
-              onStatusChange={handleStatusChange}
-              focusTaskId={focusTaskId}
-            />
+            {viewNodes.length === 0 ? (
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6 text-sm text-slate-300">
+                No tasks for this project yet. Open{" "}
+                <Link className="text-cyan-300 underline" href="/projects">
+                  Projects
+                </Link>{" "}
+                to create work, or open the Project Map after seeding a process.
+              </div>
+            ) : (
+              <SwimlaneProcessMap
+                nodes={viewNodes}
+                canEdit={canEdit}
+                onStatusChange={handleStatusChange}
+                focusTaskId={focusTaskId}
+              />
+            )}
           </div>
         ) : null}
 
         {tab === "kanban" ? (
           <div className="flex h-full min-h-[calc(100vh-8rem)] flex-col">
             <LinkedKanban
-              nodes={nodes}
+              nodes={viewNodes}
               canEdit={canEdit}
               onStatusChange={handleStatusChange}
               focusTaskId={focusTaskId}
@@ -195,7 +260,7 @@ export function CommandCenter({
         {tab === "gantt" ? (
           <div className="h-full min-h-[calc(100vh-8rem)] overflow-auto">
             <GanttCalendar
-              nodes={nodes}
+              nodes={viewNodes}
               canEdit={canEdit}
               onStatusChange={handleStatusChange}
               focusTaskId={focusTaskId}
