@@ -3,17 +3,17 @@ import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/session";
 import { can } from "@/lib/permissions";
 import {
-  assignTaskAction,
   archiveProjectAction,
   createMilestoneAction,
   createTaskAction,
   postTaskUpdateAction,
   signOffTaskAction,
-  updateTaskMembersAction,
+  updateTaskStaffingAction,
   updateTaskStatusAction,
 } from "@/app/actions";
 import { ProjectTabs } from "@/components/project-tabs";
 import { DueDateField } from "@/components/due-date-field";
+import { TeamMemberPicker } from "@/components/team-member-picker";
 import { Badge, Card, PageHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Select, Textarea } from "@/components/ui/form";
@@ -25,7 +25,7 @@ export default async function ProjectOverviewPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ status?: string; assignee?: string }>;
+  searchParams: Promise<{ status?: string; assignee?: string; staffing?: string }>;
 }) {
   const session = await requireSession();
   const { id } = await params;
@@ -116,10 +116,21 @@ export default async function ProjectOverviewPage({
 
       <ProjectTabs projectId={project.id} current="" />
 
+      {sp.staffing === "saved" ? (
+        <div className="mb-4 rounded-xl border border-emerald-400/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+          Task staffing saved — leader and team members updated.
+        </div>
+      ) : null}
+
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <h2 className="text-lg font-medium text-white">Tasks</h2>
+            <div>
+              <h2 className="text-lg font-medium text-white">Task List</h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Saved tasks for this project. Each card is highlighted so you can see where a task starts.
+              </p>
+            </div>
             <form className="flex flex-wrap gap-2">
               <Input name="status" placeholder="Filter status e.g. TODO" defaultValue={sp.status} className="w-40" />
               <Input name="assignee" placeholder="Filter leader/member" defaultValue={sp.assignee} className="w-44" />
@@ -129,25 +140,29 @@ export default async function ProjectOverviewPage({
             </form>
           </div>
 
-          <div className="space-y-3">
-            {project.tasks.map((task) => {
+          <div className="space-y-4">
+            {project.tasks.map((task, index) => {
               const isLeader = task.assigneeId === session.user.id;
               const canLeadActions = isLeader || session.user.role === "ADMIN" || session.user.role === "PM";
               return (
-                <div key={task.id} className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+                <div
+                  key={task.id}
+                  className="rounded-2xl border-2 border-cyan-300/70 bg-gradient-to-br from-cyan-500/15 via-slate-950/80 to-slate-950 p-4 shadow-[0_0_0_1px_rgba(103,232,249,0.12)]"
+                >
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <Badge className="bg-cyan-400/20 text-cyan-100">Task {index + 1}</Badge>
+                    <Badge className={taskStatusColors[task.status]}>{taskStatusLabel[task.status]}</Badge>
+                    {task.leaderSignedOffAt ? (
+                      <Badge className="bg-emerald-500/15 text-emerald-200">Leader signed off</Badge>
+                    ) : null}
+                  </div>
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
-                      <div className="font-medium text-white">{task.title}</div>
-                      <p className="mt-1 text-sm text-slate-400">{task.description || "—"}</p>
-                    </div>
-                    <div className="flex flex-col items-end gap-1">
-                      <Badge className={taskStatusColors[task.status]}>{taskStatusLabel[task.status]}</Badge>
-                      {task.leaderSignedOffAt ? (
-                        <Badge className="bg-emerald-500/15 text-emerald-200">Leader signed off</Badge>
-                      ) : null}
+                      <div className="text-lg font-semibold text-white">{task.title}</div>
+                      <p className="mt-1 text-sm text-slate-300">{task.description || "—"}</p>
                     </div>
                   </div>
-                  <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-500">
+                  <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-300">
                     <span>
                       Leader: {task.assignee?.name ?? "Unassigned"}
                       {task.assignee?.skills ? ` · ${task.assignee.skills}` : ""}
@@ -163,8 +178,8 @@ export default async function ProjectOverviewPage({
                   </div>
 
                   {task.updates.length ? (
-                    <div className="mt-3 space-y-1 rounded-lg border border-slate-800/80 bg-slate-900/50 p-3">
-                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    <div className="mt-3 space-y-1 rounded-lg border border-cyan-400/20 bg-slate-900/60 p-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                         Recent leader updates
                       </div>
                       {task.updates.map((u) => (
@@ -196,42 +211,34 @@ export default async function ProjectOverviewPage({
                         </form>
                       </div>
 
-                      <form action={assignTaskAction} className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                      <form
+                        action={updateTaskStaffingAction}
+                        className="space-y-3 rounded-xl border border-cyan-400/25 bg-slate-950/50 p-3"
+                      >
                         <input type="hidden" name="taskId" value={task.id} />
-                        <Select name="leaderId" defaultValue={task.assigneeId ?? ""}>
-                          <option value="">No task leader</option>
-                          {allUsers.map((u) => (
-                            <option key={u.id} value={u.id}>
-                              {formatUserOption(u)}
-                            </option>
-                          ))}
-                        </Select>
-                        <Button type="submit" size="sm" variant="secondary">
-                          Set leader
-                        </Button>
-                      </form>
-
-                      <form action={updateTaskMembersAction} className="space-y-2">
-                        <input type="hidden" name="taskId" value={task.id} />
-                        <Label htmlFor={`members-${task.id}`}>Team members (multi-select)</Label>
-                        <select
-                          id={`members-${task.id}`}
-                          name="memberIds"
-                          multiple
-                          defaultValue={task.members.map((m) => m.userId)}
-                          className="h-36 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-400"
-                        >
-                          {allUsers
-                            .filter((u) => u.id !== task.assigneeId)
-                            .map((u) => (
+                        <div>
+                          <Label htmlFor={`leader-${task.id}`}>Task leader</Label>
+                          <Select
+                            id={`leader-${task.id}`}
+                            name="leaderId"
+                            defaultValue={task.assigneeId ?? ""}
+                          >
+                            <option value="">No task leader</option>
+                            {allUsers.map((u) => (
                               <option key={u.id} value={u.id}>
                                 {formatUserOption(u)}
                               </option>
                             ))}
-                        </select>
-                        <p className="text-[11px] text-slate-500">Hold Ctrl/Cmd to select multiple people.</p>
-                        <Button type="submit" size="sm" variant="secondary">
-                          Save team
+                          </Select>
+                        </div>
+                        <TeamMemberPicker
+                          users={allUsers}
+                          excludeIds={task.assigneeId ? [task.assigneeId] : []}
+                          defaultSelectedIds={task.members.map((m) => m.userId)}
+                          label="Team members — add or remove anytime"
+                        />
+                        <Button type="submit" size="sm">
+                          Save leader & team
                         </Button>
                       </form>
 
@@ -269,7 +276,9 @@ export default async function ProjectOverviewPage({
                 </div>
               );
             })}
-            {project.tasks.length === 0 ? <p className="text-sm text-slate-500">No tasks match these filters.</p> : null}
+            {project.tasks.length === 0 ? (
+              <p className="text-sm text-slate-500">No tasks in this Task List yet.</p>
+            ) : null}
           </div>
         </Card>
 
@@ -308,24 +317,7 @@ export default async function ProjectOverviewPage({
                     ))}
                   </Select>
                 </div>
-                <div>
-                  <Label htmlFor="memberIds">Team members</Label>
-                  <select
-                    id="memberIds"
-                    name="memberIds"
-                    multiple
-                    className="h-40 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-400"
-                  >
-                    {allUsers.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {formatUserOption(u)}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="mt-1 text-[11px] text-slate-500">
-                    Dropdown shows name + skills. Hold Ctrl/Cmd to add multiple teammates.
-                  </p>
-                </div>
+                <TeamMemberPicker users={allUsers} label="Team members (optional)" />
                 <div>
                   <Label htmlFor="milestoneId">Milestone</Label>
                   <Select id="milestoneId" name="milestoneId" defaultValue="">
@@ -350,7 +342,7 @@ export default async function ProjectOverviewPage({
                 </div>
                 <DueDateField />
                 <Button type="submit" className="w-full">
-                  Add task
+                  Add task to Task List
                 </Button>
               </form>
             </Card>

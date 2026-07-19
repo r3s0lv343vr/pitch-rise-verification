@@ -15,6 +15,7 @@ export {
   setTaskStatus,
   assignTaskAction,
   updateTaskMembersAction,
+  updateTaskStaffingAction,
   postTaskUpdateAction,
   signOffTaskAction,
 } from "@/server/actions/tasks";
