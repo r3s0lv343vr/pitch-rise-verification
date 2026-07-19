@@ -28,6 +28,7 @@ import { roleLabel } from "@/lib/permissions";
 import type { Role } from "@prisma/client";
 import { useWalkthrough } from "@/components/walkthrough/walkthrough-context";
 import { BeginnerWalkthrough } from "@/components/walkthrough/beginner-walkthrough";
+import { TopNav } from "@/components/top-nav";
 
 const commandCenterViews = [
   { tab: "main", label: "Overview", icon: Home },
@@ -56,7 +57,7 @@ export function AppShell({
   const searchParams = useSearchParams();
   const [open, setOpen] = useState(false);
   const [ccOpen, setCcOpen] = useState(true);
-  const { active, state, menuOpenRequest, restart } = useWalkthrough();
+  const { active, state, restart } = useWalkthrough();
 
   const activeTab = searchParams.get("tab") ?? "main";
   const projectFilter = searchParams.get("project");
@@ -71,25 +72,21 @@ export function AppShell({
     return qs ? `/dashboard?${qs}` : "/dashboard";
   }
 
-  // Close drawer after navigation — never trap the menu open.
   useEffect(() => {
     setOpen(false);
   }, [pathname, searchParams]);
 
   useEffect(() => {
-    if (menuOpenRequest > 0) setOpen(true);
-  }, [menuOpenRequest]);
-
-  useEffect(() => {
     if (onCommandCenter) setCcOpen(true);
   }, [onCommandCenter]);
 
+  // Clear any leftover scroll lock from older builds.
   useEffect(() => {
-    document.body.style.overflow = open ? "hidden" : "";
+    document.body.style.overflow = "";
     return () => {
       document.body.style.overflow = "";
     };
-  }, [open]);
+  }, []);
 
   return (
     <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_#0f2847_0%,_#020617_55%)] text-slate-100">
@@ -100,15 +97,12 @@ export function AppShell({
               type="button"
               onClick={() => setOpen(true)}
               data-tour="menu-button"
-              className={cn(
-                "inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-700 bg-slate-900 text-slate-100 hover:border-cyan-400/40 hover:text-cyan-200",
-                highlightProjectsNav && "tour-target-active tour-vibrate"
-              )}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-700 bg-slate-900 text-slate-100 hover:border-cyan-400/40 hover:text-cyan-200"
               aria-label="Open menu"
             >
               <Menu className="h-5 w-5" />
             </button>
-            <div className="flex items-center gap-2">
+            <Link href="/dashboard" className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-cyan-400/20 text-cyan-300">
                 <Sparkles className="h-4 w-4" />
               </div>
@@ -118,13 +112,14 @@ export function AppShell({
                   {onCommandCenter ? "Command Center" : "Cohort PM Platform"}
                 </div>
               </div>
-            </div>
+            </Link>
           </div>
           <div className="hidden text-right sm:block">
             <div className="text-sm font-medium text-white">{user.name}</div>
             <div className="text-[11px] uppercase tracking-wide text-cyan-300/90">{roleLabel(user.role)}</div>
           </div>
         </div>
+        <TopNav />
       </header>
 
       {open ? (
@@ -179,6 +174,7 @@ export function AppShell({
                         <Link
                           key={item.tab}
                           href={ccHref(item.tab)}
+                          onClick={() => setOpen(false)}
                           className={cn(
                             "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition",
                             activeItem
@@ -207,6 +203,7 @@ export function AppShell({
                     key={item.href}
                     href={item.href}
                     data-tour={isProjects ? "projects-nav" : undefined}
+                    onClick={() => setOpen(false)}
                     className={cn(
                       "flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm transition",
                       navActive
@@ -234,12 +231,12 @@ export function AppShell({
                 type="button"
                 onClick={() => {
                   restart();
-                  setOpen(true);
+                  setOpen(false);
                 }}
                 className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-xs text-cyan-100 hover:bg-cyan-500/20"
               >
                 <Compass className="h-3.5 w-3.5" />
-                Restart beginner tour
+                Start beginner tour
               </button>
               <button
                 onClick={() => signOut({ callbackUrl: "/" })}

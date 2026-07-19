@@ -1,4 +1,5 @@
-export const WALKTHROUGH_STORAGE_KEY = "pm-beginner-walkthrough-v1";
+/** Bumped key so prior trapped tours stop auto-running. */
+export const WALKTHROUGH_STORAGE_KEY = "pm-beginner-walkthrough-v2";
 
 export type WalkthroughStep =
   | "projects-nav"
@@ -15,9 +16,10 @@ export type WalkthroughState = {
   highlightProjectId?: string | null;
 };
 
+/** Default OFF — tour is opt-in via "Restart beginner tour" so it cannot trap navigation. */
 export const WALKTHROUGH_DEFAULT: WalkthroughState = {
-  status: "active",
-  step: "projects-nav",
+  status: "skipped",
+  step: "done",
   highlightProjectId: null,
 };
 
@@ -28,8 +30,8 @@ export function readWalkthroughState(): WalkthroughState {
     if (!raw) return WALKTHROUGH_DEFAULT;
     const parsed = JSON.parse(raw) as Partial<WalkthroughState>;
     return {
-      status: parsed.status ?? "active",
-      step: parsed.step ?? "projects-nav",
+      status: parsed.status ?? "skipped",
+      step: parsed.step ?? "done",
       highlightProjectId: parsed.highlightProjectId ?? null,
     };
   } catch {
@@ -53,7 +55,7 @@ export const WALKTHROUGH_COPY: Record<
 > = {
   "projects-nav": {
     title: "Start here: Projects",
-    body: "Open the menu and tap Projects. That’s where you create and manage every delivery.",
+    body: "Open the menu (☰) and tap Projects. That’s where you create and manage every delivery.",
   },
   "project-name": {
     title: "Name your project",

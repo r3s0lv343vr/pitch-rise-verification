@@ -40,15 +40,9 @@ export default function LoginPage() {
         setError("Invalid email or password");
         return;
       }
-      // Start beginner walkthrough only for first-time users (do not reset mid-tour).
+      // Clear legacy tour lock; walkthrough is opt-in from the menu.
       try {
-        const raw = window.localStorage.getItem("pm-beginner-walkthrough-v1");
-        if (!raw) {
-          window.localStorage.setItem(
-            "pm-beginner-walkthrough-v1",
-            JSON.stringify({ status: "active", step: "projects-nav", highlightProjectId: null })
-          );
-        }
+        window.localStorage.removeItem("pm-beginner-walkthrough-v1");
       } catch {
         // ignore storage failures
       }

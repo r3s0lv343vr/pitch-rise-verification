@@ -29,78 +29,55 @@ function selectorForStep(step: WalkthroughStep, highlightProjectId?: string | nu
 }
 
 function isProjectWorkspacePath(pathname: string) {
-  // /projects/[id] or /projects/[id]/...
   return /^\/projects\/[^/]+/.test(pathname);
 }
 
 export function BeginnerWalkthrough() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { state, active, setStep, skip, complete, requestOpenMenu } = useWalkthrough();
+  const { state, active, setStep, skip, complete } = useWalkthrough();
 
-  // After project create redirect: ?highlight=id&tour=created
   useEffect(() => {
     const highlight = searchParams.get("highlight");
     const tour = searchParams.get("tour");
-    if (tour === "created" && highlight) {
+    if (tour === "created" && highlight && active) {
       setStep("project-highlight", { highlightProjectId: highlight });
     }
-  }, [searchParams, setStep]);
+  }, [searchParams, setStep, active]);
 
-  // First-login: nudge Projects nav, then advance once on /projects list
   useEffect(() => {
     if (!active) return;
-    if (state.step !== "projects-nav") return;
-    if (pathname === "/projects") {
+    if (state.step === "projects-nav" && pathname === "/projects") {
       setStep("project-name");
-      return;
     }
-    // Suggest opening the menu, but never trap the user there.
-    requestOpenMenu();
-  }, [active, state.step, pathname, requestOpenMenu, setStep]);
+  }, [active, state.step, pathname, setStep]);
 
-  // If the user leaves the create flow into a project workspace, end the tour
-  // so Project tabs + hamburger stay fully usable.
+  // Never trap users inside a project workspace.
   useEffect(() => {
     if (!active) return;
-    if (state.step === "project-highlight") return;
     if (isProjectWorkspacePath(pathname)) {
       complete();
     }
-  }, [active, state.step, pathname, complete]);
-
-  // Completing the highlight step when they open the project
-  useEffect(() => {
-    if (!active) return;
-    if (state.step === "project-highlight" && state.highlightProjectId) {
-      if (pathname === `/projects/${state.highlightProjectId}` || pathname.startsWith(`/projects/${state.highlightProjectId}/`)) {
-        complete();
-      }
-    }
-  }, [active, state.step, state.highlightProjectId, pathname, complete]);
+  }, [active, pathname, complete]);
 
   const copy = useMemo(() => {
     if (!active || state.step === "done") return null;
-    // Only show coach UI on routes where the step actually applies
     if (state.step === "projects-nav" && pathname === "/projects") return null;
     if (
       (state.step === "project-name" ||
         state.step === "project-description" ||
         state.step === "project-budget" ||
-        state.step === "project-create") &&
+        state.step === "project-create" ||
+        state.step === "project-highlight") &&
       pathname !== "/projects"
     ) {
       return null;
     }
-    if (state.step === "project-highlight" && pathname !== "/projects") return null;
-    return WALKTHROUGH_COPY[state.step];
+    return WALKTHROUGH_COPY[state.step as Exclude<WalkthroughStep, "done">];
   }, [active, state.step, pathname]);
 
   const selector = active && copy ? selectorForStep(state.step, state.highlightProjectId) : null;
-  const vibrate =
-    state.step === "projects-nav" ||
-    state.step === "project-create" ||
-    state.step === "project-highlight";
+  const vibrate = state.step === "project-create" || state.step === "project-highlight";
 
   if (!active || !copy) return null;
 
@@ -115,11 +92,6 @@ export function BeginnerWalkthrough() {
           <h2 className="text-base font-semibold text-white">{copy.title}</h2>
           <p className="mt-1 text-sm text-slate-300">{copy.body}</p>
           <div className="mt-3 flex flex-wrap gap-2">
-            {state.step === "projects-nav" ? (
-              <Button type="button" size="sm" onClick={() => requestOpenMenu()}>
-                Show Projects
-              </Button>
-            ) : null}
             {state.step === "project-highlight" ? (
               <Button type="button" size="sm" onClick={() => complete()}>
                 Finish walkthrough

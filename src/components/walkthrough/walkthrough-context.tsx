@@ -35,9 +35,15 @@ export function WalkthroughProvider({ children }: { children: ReactNode }) {
   const [menuOpenRequest, setMenuOpenRequest] = useState(0);
 
   useEffect(() => {
+    // Retire v1 tours that could trap the menu/scroll lock.
+    try {
+      window.localStorage.removeItem("pm-beginner-walkthrough-v1");
+    } catch {
+      // ignore
+    }
     setState(readWalkthroughState());
     function onStorage(e: StorageEvent) {
-      if (e.key === "pm-beginner-walkthrough-v1") setState(readWalkthroughState());
+      if (e.key === "pm-beginner-walkthrough-v2") setState(readWalkthroughState());
     }
     function onCustom() {
       setState(readWalkthroughState());
@@ -77,7 +83,6 @@ export function WalkthroughProvider({ children }: { children: ReactNode }) {
 
   const restart = useCallback(() => {
     persist({ status: "active", step: "projects-nav", highlightProjectId: null });
-    setMenuOpenRequest((n) => n + 1);
   }, [persist]);
 
   const requestOpenMenu = useCallback(() => {
