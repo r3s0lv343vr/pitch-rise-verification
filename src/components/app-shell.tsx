@@ -21,10 +21,13 @@ import {
   Columns3,
   CalendarRange,
   Home,
+  Compass,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { roleLabel } from "@/lib/permissions";
 import type { Role } from "@prisma/client";
+import { useWalkthrough } from "@/components/walkthrough/walkthrough-context";
+import { BeginnerWalkthrough } from "@/components/walkthrough/beginner-walkthrough";
 
 const commandCenterViews = [
   { tab: "main", label: "Overview", icon: Home },
@@ -53,10 +56,12 @@ export function AppShell({
   const searchParams = useSearchParams();
   const [open, setOpen] = useState(false);
   const [ccOpen, setCcOpen] = useState(true);
+  const { active, state, menuOpenRequest, restart } = useWalkthrough();
 
   const activeTab = searchParams.get("tab") ?? "main";
   const projectFilter = searchParams.get("project");
   const onCommandCenter = pathname === "/dashboard" || pathname.startsWith("/dashboard/");
+  const holdMenuOpen = active && state.step === "projects-nav";
 
   function ccHref(tab: string) {
     const params = new URLSearchParams();
@@ -67,8 +72,13 @@ export function AppShell({
   }
 
   useEffect(() => {
+    if (holdMenuOpen) return;
     setOpen(false);
-  }, [pathname, searchParams]);
+  }, [pathname, searchParams, holdMenuOpen]);
+
+  useEffect(() => {
+    if (menuOpenRequest > 0) setOpen(true);
+  }, [menuOpenRequest]);
 
   useEffect(() => {
     if (onCommandCenter) setCcOpen(true);
@@ -89,7 +99,11 @@ export function AppShell({
             <button
               type="button"
               onClick={() => setOpen(true)}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-700 bg-slate-900 text-slate-100 hover:border-cyan-400/40 hover:text-cyan-200"
+              data-tour="menu-button"
+              className={cn(
+                "inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-700 bg-slate-900 text-slate-100 hover:border-cyan-400/40 hover:text-cyan-200",
+                holdMenuOpen && "tour-target-active tour-vibrate"
+              )}
               aria-label="Open menu"
             >
               <Menu className="h-5 w-5" />
@@ -119,14 +133,18 @@ export function AppShell({
             type="button"
             className="absolute inset-0 bg-black/60"
             aria-label="Close menu overlay"
-            onClick={() => setOpen(false)}
+            onClick={() => {
+              if (!holdMenuOpen) setOpen(false);
+            }}
           />
           <aside className="relative z-10 flex h-full w-[min(86vw,320px)] flex-col border-r border-slate-800 bg-slate-950 p-4 shadow-2xl">
             <div className="mb-4 flex items-center justify-between px-1">
               <div className="text-sm font-semibold text-white">Menu</div>
               <button
                 type="button"
-                onClick={() => setOpen(false)}
+                onClick={() => {
+                  if (!holdMenuOpen) setOpen(false);
+                }}
                 className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-700 text-slate-300 hover:text-white"
                 aria-label="Close menu"
               >
@@ -155,9 +173,11 @@ export function AppShell({
                 {ccOpen ? (
                   <div className="space-y-0.5 px-2 pb-2">
                     {commandCenterViews.map((item) => {
-                      const active =
+                      const activeItem =
                         onCommandCenter &&
-                        (item.tab === "main" ? activeTab === "main" || !searchParams.get("tab") : activeTab === item.tab);
+                        (item.tab === "main"
+                          ? activeTab === "main" || !searchParams.get("tab")
+                          : activeTab === item.tab);
                       const Icon = item.icon;
                       return (
                         <Link
@@ -165,7 +185,7 @@ export function AppShell({
                           href={ccHref(item.tab)}
                           className={cn(
                             "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition",
-                            active
+                            activeItem
                               ? "bg-cyan-500/20 text-cyan-100"
                               : "text-slate-400 hover:bg-slate-800/70 hover:text-slate-100"
                           )}
@@ -183,17 +203,20 @@ export function AppShell({
                 Workspace
               </div>
               {secondaryNav.map((item) => {
-                const active = pathname === item.href || pathname.startsWith(item.href + "/");
+                const navActive = pathname === item.href || pathname.startsWith(item.href + "/");
                 const Icon = item.icon;
+                const isProjects = item.href === "/projects";
                 return (
                   <Link
                     key={item.href}
                     href={item.href}
+                    data-tour={isProjects ? "projects-nav" : undefined}
                     className={cn(
                       "flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm transition",
-                      active
+                      navActive
                         ? "bg-slate-800 text-slate-100"
-                        : "text-slate-400 hover:bg-slate-800/70 hover:text-slate-100"
+                        : "text-slate-400 hover:bg-slate-800/70 hover:text-slate-100",
+                      isProjects && holdMenuOpen && "tour-target-active tour-vibrate bg-cyan-500/20 text-cyan-50"
                     )}
                   >
                     <Icon className="h-4 w-4" />
@@ -210,8 +233,19 @@ export function AppShell({
                 {roleLabel(user.role)}
               </div>
               <button
+                type="button"
+                onClick={() => {
+                  restart();
+                  setOpen(true);
+                }}
+                className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-xs text-cyan-100 hover:bg-cyan-500/20"
+              >
+                <Compass className="h-3.5 w-3.5" />
+                Restart beginner tour
+              </button>
+              <button
                 onClick={() => signOut({ callbackUrl: "/" })}
-                className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-slate-800 px-3 py-2 text-xs text-slate-200 hover:bg-slate-700"
+                className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-slate-800 px-3 py-2 text-xs text-slate-200 hover:bg-slate-700"
               >
                 <LogOut className="h-3.5 w-3.5" />
                 Sign out
@@ -222,6 +256,7 @@ export function AppShell({
       ) : null}
 
       <main className="w-full px-3 py-3 sm:px-4 sm:py-3 lg:px-5">{children}</main>
+      <BeginnerWalkthrough />
     </div>
   );
 }

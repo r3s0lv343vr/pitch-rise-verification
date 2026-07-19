@@ -62,3 +62,35 @@ body {
     0 0 0 3px rgba(251, 113, 133, 0.55),
     0 0 18px rgba(251, 113, 133, 0.35);
 }
+
+@keyframes tour-vibrate {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  20% {
+    transform: translate3d(-2px, 0, 0) rotate(-0.5deg);
+  }
+  40% {
+    transform: translate3d(2px, 0, 0) rotate(0.5deg);
+  }
+  60% {
+    transform: translate3d(-1.5px, 0, 0);
+  }
+  80% {
+    transform: translate3d(1.5px, 0, 0);
+  }
+}
+
+.tour-vibrate {
+  animation: tour-vibrate 0.75s ease-in-out infinite;
+}
+
+.tour-target-active {
+  position: relative;
+  z-index: 61;
+  border-radius: 0.75rem;
+  box-shadow:
+    0 0 0 3px rgba(103, 232, 249, 0.75),
+    0 0 24px rgba(34, 211, 238, 0.45);
+}

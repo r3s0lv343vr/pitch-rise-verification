@@ -117,6 +117,12 @@ export async function createProjectAction(formData: FormData) {
 
   revalidatePath("/projects");
   revalidatePath("/dashboard");
+
+  // Beginner walkthrough returns to the projects list so the new card can be highlighted.
+  const returnTo = String(formData.get("returnTo") || "").trim();
+  if (returnTo === "projects") {
+    redirect(`/projects?highlight=${project.id}&tour=created`);
+  }
   redirect(`/dashboard?tab=process&project=${project.id}`);
 }
 
