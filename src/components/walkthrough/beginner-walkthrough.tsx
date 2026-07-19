@@ -28,6 +28,11 @@ function selectorForStep(step: WalkthroughStep, highlightProjectId?: string | nu
   }
 }
 
+function isProjectWorkspacePath(pathname: string) {
+  // /projects/[id] or /projects/[id]/...
+  return /^\/projects\/[^/]+/.test(pathname);
+}
+
 export function BeginnerWalkthrough() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -42,7 +47,7 @@ export function BeginnerWalkthrough() {
     }
   }, [searchParams, setStep]);
 
-  // First-login / beginner: keep Projects nav step until they arrive on /projects
+  // First-login: nudge Projects nav, then advance once on /projects list
   useEffect(() => {
     if (!active) return;
     if (state.step !== "projects-nav") return;
@@ -50,14 +55,25 @@ export function BeginnerWalkthrough() {
       setStep("project-name");
       return;
     }
+    // Suggest opening the menu, but never trap the user there.
     requestOpenMenu();
   }, [active, state.step, pathname, requestOpenMenu, setStep]);
+
+  // If the user leaves the create flow into a project workspace, end the tour
+  // so Project tabs + hamburger stay fully usable.
+  useEffect(() => {
+    if (!active) return;
+    if (state.step === "project-highlight") return;
+    if (isProjectWorkspacePath(pathname)) {
+      complete();
+    }
+  }, [active, state.step, pathname, complete]);
 
   // Completing the highlight step when they open the project
   useEffect(() => {
     if (!active) return;
     if (state.step === "project-highlight" && state.highlightProjectId) {
-      if (pathname === `/projects/${state.highlightProjectId}`) {
+      if (pathname === `/projects/${state.highlightProjectId}` || pathname.startsWith(`/projects/${state.highlightProjectId}/`)) {
         complete();
       }
     }
@@ -65,10 +81,22 @@ export function BeginnerWalkthrough() {
 
   const copy = useMemo(() => {
     if (!active || state.step === "done") return null;
+    // Only show coach UI on routes where the step actually applies
+    if (state.step === "projects-nav" && pathname === "/projects") return null;
+    if (
+      (state.step === "project-name" ||
+        state.step === "project-description" ||
+        state.step === "project-budget" ||
+        state.step === "project-create") &&
+      pathname !== "/projects"
+    ) {
+      return null;
+    }
+    if (state.step === "project-highlight" && pathname !== "/projects") return null;
     return WALKTHROUGH_COPY[state.step];
-  }, [active, state.step]);
+  }, [active, state.step, pathname]);
 
-  const selector = active ? selectorForStep(state.step, state.highlightProjectId) : null;
+  const selector = active && copy ? selectorForStep(state.step, state.highlightProjectId) : null;
   const vibrate =
     state.step === "projects-nav" ||
     state.step === "project-create" ||
@@ -79,26 +107,28 @@ export function BeginnerWalkthrough() {
   return (
     <>
       <TourSpotlight targetSelector={selector} vibrate={vibrate} />
-      <div className="fixed bottom-4 left-1/2 z-[70] w-[min(92vw,420px)] -translate-x-1/2 rounded-2xl border border-cyan-400/40 bg-slate-950/95 p-4 shadow-2xl backdrop-blur">
-        <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-cyan-300/90">
-          Beginner walkthrough
-        </div>
-        <h2 className="text-base font-semibold text-white">{copy.title}</h2>
-        <p className="mt-1 text-sm text-slate-300">{copy.body}</p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {state.step === "projects-nav" ? (
-            <Button type="button" size="sm" onClick={() => requestOpenMenu()}>
-              Show Projects
+      <div className="pointer-events-none fixed bottom-4 left-1/2 z-[55] w-[min(92vw,420px)] -translate-x-1/2">
+        <div className="pointer-events-auto rounded-2xl border border-cyan-400/40 bg-slate-950/95 p-4 shadow-2xl backdrop-blur">
+          <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-cyan-300/90">
+            Beginner walkthrough
+          </div>
+          <h2 className="text-base font-semibold text-white">{copy.title}</h2>
+          <p className="mt-1 text-sm text-slate-300">{copy.body}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {state.step === "projects-nav" ? (
+              <Button type="button" size="sm" onClick={() => requestOpenMenu()}>
+                Show Projects
+              </Button>
+            ) : null}
+            {state.step === "project-highlight" ? (
+              <Button type="button" size="sm" onClick={() => complete()}>
+                Finish walkthrough
+              </Button>
+            ) : null}
+            <Button type="button" size="sm" variant="secondary" onClick={() => skip()}>
+              Skip tour
             </Button>
-          ) : null}
-          {state.step === "project-highlight" ? (
-            <Button type="button" size="sm" onClick={() => complete()}>
-              Finish walkthrough
-            </Button>
-          ) : null}
-          <Button type="button" size="sm" variant="ghost" onClick={() => skip()}>
-            Skip tour
-          </Button>
+          </div>
         </div>
       </div>
     </>

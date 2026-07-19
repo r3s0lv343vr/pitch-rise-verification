@@ -40,7 +40,7 @@ export default function LoginPage() {
         setError("Invalid email or password");
         return;
       }
-      // Resume beginner walkthrough for first-time / unfinished tours.
+      // Start beginner walkthrough only for first-time users (do not reset mid-tour).
       try {
         const raw = window.localStorage.getItem("pm-beginner-walkthrough-v1");
         if (!raw) {
@@ -48,18 +48,6 @@ export default function LoginPage() {
             "pm-beginner-walkthrough-v1",
             JSON.stringify({ status: "active", step: "projects-nav", highlightProjectId: null })
           );
-        } else {
-          const parsed = JSON.parse(raw) as { status?: string };
-          if (parsed.status !== "completed" && parsed.status !== "skipped") {
-            window.localStorage.setItem(
-              "pm-beginner-walkthrough-v1",
-              JSON.stringify({
-                status: "active",
-                step: "projects-nav",
-                highlightProjectId: null,
-              })
-            );
-          }
         }
       } catch {
         // ignore storage failures

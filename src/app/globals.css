@@ -88,7 +88,6 @@ body {
 
 .tour-target-active {
   position: relative;
-  z-index: 61;
   border-radius: 0.75rem;
   box-shadow:
     0 0 0 3px rgba(103, 232, 249, 0.75),

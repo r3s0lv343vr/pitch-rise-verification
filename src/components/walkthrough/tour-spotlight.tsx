@@ -18,10 +18,14 @@ function measure(el: Element | null): Rect | null {
   };
 }
 
+/**
+ * Non-blocking highlight ring. Intentionally does NOT use a full-screen dim overlay
+ * (those can trap clicks and block the hamburger / project tabs).
+ */
 export function TourSpotlight({
   targetSelector,
   vibrate = false,
-  padding = 8,
+  padding = 6,
 }: {
   targetSelector: string | null;
   vibrate?: boolean;
@@ -48,12 +52,7 @@ export function TourSpotlight({
     }
 
     update();
-    const el = document.querySelector(targetSelector);
-    if (el instanceof HTMLElement) {
-      el.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
-    }
-
-    const interval = window.setInterval(update, 350);
+    const interval = window.setInterval(update, 400);
     window.addEventListener("resize", update);
     window.addEventListener("scroll", update, true);
     return () => {
@@ -81,7 +80,7 @@ export function TourSpotlight({
     <div
       aria-hidden
       className={cn(
-        "pointer-events-none fixed z-[60] rounded-2xl border-2 border-cyan-300/90 bg-cyan-400/10 shadow-[0_0_0_9999px_rgba(2,6,23,0.62)]",
+        "pointer-events-none fixed z-[45] rounded-2xl border-2 border-cyan-300/90 bg-cyan-400/10",
         vibrate && "tour-vibrate"
       )}
       style={{
@@ -89,6 +88,7 @@ export function TourSpotlight({
         left: rect.left - padding,
         width: rect.width + padding * 2,
         height: rect.height + padding * 2,
+        boxShadow: "0 0 0 3px rgba(103,232,249,0.35), 0 0 28px rgba(34,211,238,0.35)",
       }}
     />,
     document.body

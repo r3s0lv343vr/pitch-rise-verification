@@ -61,7 +61,7 @@ export function AppShell({
   const activeTab = searchParams.get("tab") ?? "main";
   const projectFilter = searchParams.get("project");
   const onCommandCenter = pathname === "/dashboard" || pathname.startsWith("/dashboard/");
-  const holdMenuOpen = active && state.step === "projects-nav";
+  const highlightProjectsNav = active && state.step === "projects-nav";
 
   function ccHref(tab: string) {
     const params = new URLSearchParams();
@@ -71,10 +71,10 @@ export function AppShell({
     return qs ? `/dashboard?${qs}` : "/dashboard";
   }
 
+  // Close drawer after navigation — never trap the menu open.
   useEffect(() => {
-    if (holdMenuOpen) return;
     setOpen(false);
-  }, [pathname, searchParams, holdMenuOpen]);
+  }, [pathname, searchParams]);
 
   useEffect(() => {
     if (menuOpenRequest > 0) setOpen(true);
@@ -93,7 +93,7 @@ export function AppShell({
 
   return (
     <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_#0f2847_0%,_#020617_55%)] text-slate-100">
-      <header className="sticky top-0 z-40 border-b border-slate-800/80 bg-slate-950/85 backdrop-blur">
+      <header className="sticky top-0 z-[80] border-b border-slate-800/80 bg-slate-950/85 backdrop-blur">
         <div className="flex w-full items-center justify-between gap-3 px-3 py-2.5 sm:px-4">
           <div className="flex items-center gap-3">
             <button
@@ -102,7 +102,7 @@ export function AppShell({
               data-tour="menu-button"
               className={cn(
                 "inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-700 bg-slate-900 text-slate-100 hover:border-cyan-400/40 hover:text-cyan-200",
-                holdMenuOpen && "tour-target-active tour-vibrate"
+                highlightProjectsNav && "tour-target-active tour-vibrate"
               )}
               aria-label="Open menu"
             >
@@ -128,23 +128,19 @@ export function AppShell({
       </header>
 
       {open ? (
-        <div className="fixed inset-0 z-50 flex">
+        <div className="fixed inset-0 z-[90] flex">
           <button
             type="button"
             className="absolute inset-0 bg-black/60"
             aria-label="Close menu overlay"
-            onClick={() => {
-              if (!holdMenuOpen) setOpen(false);
-            }}
+            onClick={() => setOpen(false)}
           />
           <aside className="relative z-10 flex h-full w-[min(86vw,320px)] flex-col border-r border-slate-800 bg-slate-950 p-4 shadow-2xl">
             <div className="mb-4 flex items-center justify-between px-1">
               <div className="text-sm font-semibold text-white">Menu</div>
               <button
                 type="button"
-                onClick={() => {
-                  if (!holdMenuOpen) setOpen(false);
-                }}
+                onClick={() => setOpen(false)}
                 className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-700 text-slate-300 hover:text-white"
                 aria-label="Close menu"
               >
@@ -216,7 +212,9 @@ export function AppShell({
                       navActive
                         ? "bg-slate-800 text-slate-100"
                         : "text-slate-400 hover:bg-slate-800/70 hover:text-slate-100",
-                      isProjects && holdMenuOpen && "tour-target-active tour-vibrate bg-cyan-500/20 text-cyan-50"
+                      isProjects &&
+                        highlightProjectsNav &&
+                        "tour-target-active tour-vibrate bg-cyan-500/20 text-cyan-50"
                     )}
                   >
                     <Icon className="h-4 w-4" />
