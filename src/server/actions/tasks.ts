@@ -87,6 +87,40 @@ export async function createTaskAction(formData: FormData) {
   redirect(`/projects/${projectId}`);
 }
 
+/** Remove a task after client-side Are you sure / No confirmation. */
+export async function deleteTaskAction(formData: FormData) {
+  const session = await requireSession();
+  if (!can(session.user.role, "task:edit") && !can(session.user.role, "task:create")) {
+    return { ok: false as const, error: "You do not have permission to delete tasks." };
+  }
+
+  const taskId = String(formData.get("taskId") || "");
+  const projectId = String(formData.get("projectId") || "");
+  if (!taskId) {
+    return { ok: false as const, error: "Task not found." };
+  }
+
+  const task = await prisma.task.findUnique({ where: { id: taskId } });
+  if (!task) {
+    return { ok: false as const, error: "Task not found." };
+  }
+  if (projectId && task.projectId !== projectId) {
+    return { ok: false as const, error: "Task does not belong to this project." };
+  }
+
+  try {
+    await prisma.task.delete({ where: { id: taskId } });
+  } catch (e) {
+    console.error("deleteTaskAction failed", e);
+    return { ok: false as const, error: "Could not delete task. Please try again." };
+  }
+
+  revalidatePath(`/projects/${task.projectId}`);
+  revalidatePath("/my-work");
+  revalidatePath("/dashboard");
+  redirect(`/projects/${task.projectId}?deleted=1`);
+}
+
 export async function updateTaskStatusAction(formData: FormData) {
   const session = await requireSession();
   if (!can(session.user.role, "task:edit")) return;

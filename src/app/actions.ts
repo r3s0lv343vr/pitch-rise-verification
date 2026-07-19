@@ -11,6 +11,7 @@ export {
 } from "@/server/actions/projects";
 export {
   createTaskAction,
+  deleteTaskAction,
   updateTaskStatusAction,
   setTaskStatus,
   assignTaskAction,

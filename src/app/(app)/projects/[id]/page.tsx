@@ -12,6 +12,7 @@ import {
 } from "@/app/actions";
 import { ProjectTabs } from "@/components/project-tabs";
 import { DueDateField } from "@/components/due-date-field";
+import { DeleteTaskButton } from "@/components/delete-task-button";
 import { TaskStaffingForm } from "@/components/task-staffing-form";
 import { TeamMemberPicker } from "@/components/team-member-picker";
 import { Badge, Card, PageHeader } from "@/components/ui/card";
@@ -25,7 +26,13 @@ export default async function ProjectOverviewPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ status?: string; assignee?: string; staffing?: string; task?: string }>;
+  searchParams: Promise<{
+    status?: string;
+    assignee?: string;
+    staffing?: string;
+    task?: string;
+    deleted?: string;
+  }>;
 }) {
   const session = await requireSession();
   const { id } = await params;
@@ -136,6 +143,11 @@ export default async function ProjectOverviewPage({
           </div>
 
           <div className="space-y-4">
+            {sp.deleted === "1" ? (
+              <div className="rounded-xl border border-emerald-400/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">
+                ✓ Task deleted and removed from the Task List.
+              </div>
+            ) : null}
             {project.tasks.map((task, index) => {
               const isLeader = task.assigneeId === session.user.id;
               const canLeadActions = isLeader || session.user.role === "ADMIN" || session.user.role === "PM";
@@ -144,18 +156,25 @@ export default async function ProjectOverviewPage({
                   key={task.id}
                   className="rounded-2xl border-2 border-cyan-300/70 bg-gradient-to-br from-cyan-500/15 via-slate-950/80 to-slate-950 p-4 shadow-[0_0_0_1px_rgba(103,232,249,0.12)]"
                 >
-                  <div className="mb-2 flex flex-wrap items-center gap-2">
-                    <Badge className="bg-cyan-400/20 text-cyan-100">Task {index + 1}</Badge>
-                    <Badge className={taskStatusColors[task.status]}>{taskStatusLabel[task.status]}</Badge>
-                    {task.leaderSignedOffAt ? (
-                      <Badge className="bg-emerald-500/15 text-emerald-200">Leader signed off</Badge>
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge className="bg-cyan-400/20 text-cyan-100">Task {index + 1}</Badge>
+                      <Badge className={taskStatusColors[task.status]}>{taskStatusLabel[task.status]}</Badge>
+                      {task.leaderSignedOffAt ? (
+                        <Badge className="bg-emerald-500/15 text-emerald-200">Leader signed off</Badge>
+                      ) : null}
+                    </div>
+                    {canEdit ? (
+                      <DeleteTaskButton
+                        taskId={task.id}
+                        projectId={project.id}
+                        taskTitle={task.title}
+                      />
                     ) : null}
                   </div>
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div>
-                      <div className="text-lg font-semibold text-white">{task.title}</div>
-                      <p className="mt-1 text-sm text-slate-300">{task.description || "—"}</p>
-                    </div>
+                  <div>
+                    <div className="text-lg font-semibold text-white">{task.title}</div>
+                    <p className="mt-1 text-sm text-slate-300">{task.description || "—"}</p>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-300">
                     <span>
