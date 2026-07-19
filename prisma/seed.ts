@@ -118,10 +118,11 @@ async function main() {
       onboarded: true,
       integrations: {
         create: [
+          // All start disconnected — Connect toggles are UI stubs only (no OAuth/API).
           { provider: IntegrationProvider.SLACK, connected: false },
-          { provider: IntegrationProvider.EMAIL, connected: true },
+          { provider: IntegrationProvider.EMAIL, connected: false },
           { provider: IntegrationProvider.CALENDAR, connected: false },
-          { provider: IntegrationProvider.GITHUB, connected: true },
+          { provider: IntegrationProvider.GITHUB, connected: false },
         ],
       },
       resources: {

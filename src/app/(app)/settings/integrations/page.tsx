@@ -12,18 +12,23 @@ export default async function IntegrationsPage() {
   const canToggle = can(session.user.role, "integration:toggle");
 
   const copy: Record<string, string> = {
-    SLACK: "Announce deadlines and assignment pings (stub — connect toggles UI state).",
-    EMAIL: "Digest and assignment mailers (stub).",
-    CALENDAR: "Sync milestone due dates (stub).",
-    GITHUB: "Link tasks to issues/PRs (stub with roadmap for Phase 2+).",
+    SLACK: "Announce deadlines and assignment pings. Phase 1 stub — Connect only flips local UI state.",
+    EMAIL: "Digest and assignment mailers. Phase 1 stub — no outbound email is sent.",
+    CALENDAR: "Sync milestone due dates. Phase 1 stub — no calendar provider is called.",
+    GITHUB: "Link tasks to issues/PRs. Phase 1 stub — reserved for Phase 2+ OAuth.",
   };
 
   return (
     <div>
       <PageHeader
         title="Integrations"
-        subtitle="Stubbed connectors for the cohort stack. Real OAuth can land after ballot cutover."
+        subtitle="Non-functional stubs for the cohort demo. Toggles persist a local Connected flag only — no OAuth or third-party sync."
       />
+      <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+        <strong className="font-medium">Stub notice:</strong> Slack, Email, Calendar, and GitHub
+        connectors are disclosed as UI-only. They do not authenticate with external services in
+        Phase 1.
+      </div>
       <div className="grid gap-4 md:grid-cols-2">
         {integrations.map((i) => (
           <Card key={i.id}>
@@ -32,20 +37,23 @@ export default async function IntegrationsPage() {
                 <h3 className="text-lg font-medium text-white">{i.provider}</h3>
                 <p className="mt-1 text-sm text-slate-400">{copy[i.provider]}</p>
               </div>
-              <Badge className={i.connected ? "bg-emerald-500/15 text-emerald-200" : "bg-slate-800 text-slate-400"}>
-                {i.connected ? "Connected" : "Not connected"}
-              </Badge>
+              <div className="flex flex-col items-end gap-1">
+                <Badge className="bg-amber-500/15 text-amber-100">UI stub</Badge>
+                <Badge className={i.connected ? "bg-emerald-500/15 text-emerald-200" : "bg-slate-800 text-slate-400"}>
+                  {i.connected ? "Stub · Connected" : "Stub · Not connected"}
+                </Badge>
+              </div>
             </div>
             {canToggle ? (
               <form action={toggleIntegrationAction} className="mt-4">
                 <input type="hidden" name="id" value={i.id} />
                 <input type="hidden" name="connected" value={String(i.connected)} />
                 <Button type="submit" variant={i.connected ? "secondary" : "primary"}>
-                  {i.connected ? "Disconnect" : "Connect"}
+                  {i.connected ? "Disconnect (stub)" : "Connect (stub)"}
                 </Button>
               </form>
             ) : (
-              <p className="mt-4 text-xs text-slate-500">Only Admin can toggle integrations.</p>
+              <p className="mt-4 text-xs text-slate-500">Only Admin can toggle integration stubs.</p>
             )}
           </Card>
         ))}
