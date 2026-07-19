@@ -90,6 +90,7 @@ model User {
   createdTasks     Task[]          @relation("TaskCreator")
   taskMemberships  TaskMember[]
   taskUpdates      TaskUpdate[]
+  taskDocuments    TaskDocument[]
   ownedRisks       Risk[]          @relation("RiskOwner")
   ownedIssues      Issue[]         @relation("IssueOwner")
   ownedChanges     ChangeRequest[] @relation("ChangeOwner")
@@ -208,6 +209,7 @@ model Task {
 
   members       TaskMember[]
   updates       TaskUpdate[]
+  documents     TaskDocument[]
   dependencies  TaskDependency[] @relation("DependentTask")
   dependents    TaskDependency[] @relation("DependencyTask")
   timeEntries   TimeEntry[]
@@ -215,6 +217,27 @@ model Task {
   @@index([projectId])
   @@index([assigneeId])
   @@index([status])
+}
+
+/// Uploaded reference files for a task (minutes, plans, etc). Max 25MB per file (enforced in app).
+model TaskDocument {
+  id           String   @id @default(cuid())
+  taskId       String
+  task         Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  uploaderId   String
+  uploader     User     @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
+  /// Category for the document: minutes | plan | other
+  category     String   @default("other")
+  fileName     String
+  mimeType     String   @default("application/octet-stream")
+  sizeBytes    Int
+  url          String
+  blobPathname String
+  note         String   @default("")
+  createdAt    DateTime @default(now())
+
+  @@index([taskId])
+  @@index([uploaderId])
 }
 
 model TaskMember {

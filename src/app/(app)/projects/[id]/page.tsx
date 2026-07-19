@@ -13,6 +13,7 @@ import {
 import { ProjectTabs } from "@/components/project-tabs";
 import { DueDateField } from "@/components/due-date-field";
 import { DeleteTaskButton } from "@/components/delete-task-button";
+import { TaskDocumentsPanel } from "@/components/task-documents-panel";
 import { TaskStaffingForm } from "@/components/task-staffing-form";
 import { TeamMemberPicker } from "@/components/team-member-picker";
 import { Badge, Card, PageHeader } from "@/components/ui/card";
@@ -50,6 +51,10 @@ export default async function ProjectOverviewPage({
           assignee: true,
           members: { include: { user: true }, orderBy: { createdAt: "asc" } },
           updates: { include: { author: true }, orderBy: { createdAt: "desc" }, take: 3 },
+          documents: {
+            include: { uploader: { select: { name: true } } },
+            orderBy: { createdAt: "desc" },
+          },
           dependencies: true,
         },
         // Oldest first: starter process tasks stay at the top; new tasks append below (start → finish).
@@ -150,7 +155,10 @@ export default async function ProjectOverviewPage({
             ) : null}
             {project.tasks.map((task, index) => {
               const isLeader = task.assigneeId === session.user.id;
+              const isTaskMember = task.members.some((m) => m.userId === session.user.id);
               const canLeadActions = isLeader || session.user.role === "ADMIN" || session.user.role === "PM";
+              const canUploadDocs =
+                can(session.user.role, "task:edit") || isLeader || isTaskMember;
               return (
                 <div
                   key={task.id}
@@ -206,6 +214,23 @@ export default async function ProjectOverviewPage({
                       ))}
                     </div>
                   ) : null}
+
+                  <div className="mt-3">
+                    <TaskDocumentsPanel
+                      taskId={task.id}
+                      canUpload={canUploadDocs}
+                      documents={task.documents.map((d) => ({
+                        id: d.id,
+                        fileName: d.fileName,
+                        category: d.category,
+                        sizeBytes: d.sizeBytes,
+                        url: d.url,
+                        note: d.note,
+                        createdAt: d.createdAt,
+                        uploader: d.uploader,
+                      }))}
+                    />
+                  </div>
 
                   {canEdit ? (
                     <div className="mt-3 space-y-3">

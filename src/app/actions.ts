@@ -20,6 +20,10 @@ export {
   postTaskUpdateAction,
   signOffTaskAction,
 } from "@/server/actions/tasks";
+export {
+  uploadTaskDocumentAction,
+  deleteTaskDocumentAction,
+} from "@/server/actions/documents";
 export { clockInAction, clockOutAction } from "@/server/actions/time";
 export {
   createMilestoneAction,
