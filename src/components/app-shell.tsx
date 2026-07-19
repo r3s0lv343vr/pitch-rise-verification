@@ -29,6 +29,7 @@ import type { Role } from "@prisma/client";
 import { useWalkthrough } from "@/components/walkthrough/walkthrough-context";
 import { BeginnerWalkthrough } from "@/components/walkthrough/beginner-walkthrough";
 import { TopNav } from "@/components/top-nav";
+import { ProjectSubnav } from "@/components/project-subnav";
 
 const commandCenterViews = [
   { tab: "main", label: "Overview", icon: Home },
@@ -120,6 +121,7 @@ export function AppShell({
           </div>
         </div>
         <TopNav />
+        <ProjectSubnav />
       </header>
 
       {open ? (

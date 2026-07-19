@@ -1,6 +1,3 @@
-"use client";
-
-import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 const tabs = [
@@ -10,31 +7,35 @@ const tabs = [
   { slug: "map", label: "Project map" },
   { slug: "budget", label: "Budget" },
   { slug: "risks", label: "Risks & changes" },
-];
+] as const;
 
+/** Plain anchors (not next/link) so tabs keep working even if client hydration fails. */
 export function ProjectTabs({ projectId, current }: { projectId: string; current: string }) {
   return (
-    <div className="mb-6 sticky top-[6.5rem] z-30 -mx-1 rounded-xl border border-slate-800 bg-slate-950/95 p-2 shadow-lg backdrop-blur sm:top-[7rem]">
-      <div className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-        Project views
+    <div
+      data-project-tabs
+      className="relative z-20 mb-6 rounded-xl border border-cyan-400/30 bg-slate-950 p-3 shadow-lg"
+    >
+      <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-cyan-300/80">
+        Project views — click to open
       </div>
       <div className="flex flex-wrap gap-2">
         {tabs.map((tab) => {
           const href = tab.slug ? `/projects/${projectId}/${tab.slug}` : `/projects/${projectId}`;
           const active = current === tab.slug;
           return (
-            <Link
+            <a
               key={tab.label}
               href={href}
               className={cn(
-                "rounded-lg px-3 py-2 text-sm font-medium transition",
+                "inline-flex items-center rounded-lg px-3 py-2 text-sm font-semibold transition",
                 active
                   ? "bg-cyan-500 text-slate-950 shadow"
-                  : "border border-slate-700 bg-slate-900 text-slate-200 hover:border-cyan-400/50 hover:text-cyan-100"
+                  : "border border-slate-600 bg-slate-900 text-slate-100 hover:border-cyan-300 hover:bg-slate-800 hover:text-cyan-100"
               )}
             >
               {tab.label}
-            </Link>
+            </a>
           );
         })}
       </div>

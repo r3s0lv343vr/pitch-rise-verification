@@ -13,6 +13,7 @@ import {
   isWalkthroughActive,
   readWalkthroughState,
   writeWalkthroughState,
+  WALKTHROUGH_DEFAULT,
   type WalkthroughState,
   type WalkthroughStep,
 } from "@/lib/walkthrough";
@@ -31,17 +32,21 @@ type WalkthroughContextValue = {
 const WalkthroughContext = createContext<WalkthroughContextValue | null>(null);
 
 export function WalkthroughProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<WalkthroughState>(() => readWalkthroughState());
+  // Important: same default on server + first client paint to avoid hydration mismatch
+  // (mismatches break Next.js client navigation / click handlers).
+  const [state, setState] = useState<WalkthroughState>(WALKTHROUGH_DEFAULT);
   const [menuOpenRequest, setMenuOpenRequest] = useState(0);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    // Retire v1 tours that could trap the menu/scroll lock.
     try {
       window.localStorage.removeItem("pm-beginner-walkthrough-v1");
     } catch {
       // ignore
     }
     setState(readWalkthroughState());
+    setReady(true);
+
     function onStorage(e: StorageEvent) {
       if (e.key === "pm-beginner-walkthrough-v2") setState(readWalkthroughState());
     }
@@ -92,7 +97,8 @@ export function WalkthroughProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     () => ({
       state,
-      active: isWalkthroughActive(state),
+      // Until mounted, treat as inactive so SSR/CSR match.
+      active: ready && isWalkthroughActive(state),
       setStep,
       complete,
       skip,
@@ -100,7 +106,7 @@ export function WalkthroughProvider({ children }: { children: ReactNode }) {
       menuOpenRequest,
       requestOpenMenu,
     }),
-    [state, setStep, complete, skip, restart, menuOpenRequest, requestOpenMenu]
+    [state, ready, setStep, complete, skip, restart, menuOpenRequest, requestOpenMenu]
   );
 
   return <WalkthroughContext.Provider value={value}>{children}</WalkthroughContext.Provider>;
