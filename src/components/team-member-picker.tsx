@@ -66,12 +66,20 @@ export function TeamMemberPicker({
         <div className="text-[11px] text-slate-500">{selected.size} selected</div>
       </div>
       <input
-        type="search"
+        type="text"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
+        onKeyDown={(e) => {
+          // Prevent Enter in search from submitting the parent staffing form early
+          if (e.key === "Enter") e.preventDefault();
+        }}
         placeholder="Search name or skill…"
         className="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-400"
       />
+      {/* Always submit the full selection, even if search filters hide some rows */}
+      {[...selected].map((id) => (
+        <input key={`hidden-${id}`} type="hidden" name={name} value={id} />
+      ))}
       <div className="max-h-48 space-y-1 overflow-y-auto rounded-xl border border-cyan-400/25 bg-slate-950/70 p-2">
         {filtered.map((u) => {
           const checked = selected.has(u.id);
@@ -89,8 +97,6 @@ export function TeamMemberPicker({
                 onChange={() => toggle(u.id)}
               />
               <span>{formatUserOption(u)}</span>
-              {/* Only checked boxes submit — unchecked = removed on save */}
-              {checked ? <input type="hidden" name={name} value={u.id} /> : null}
             </label>
           );
         })}

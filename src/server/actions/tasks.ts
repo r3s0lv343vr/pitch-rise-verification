@@ -186,50 +186,66 @@ export async function updateTaskMembersAction(formData: FormData) {
 
 /** One-shot save for leader + members on an existing task. */
 export async function updateTaskStaffingAction(formData: FormData) {
-  const session = await requireSession();
-  if (!can(session.user.role, "task:assign") && !can(session.user.role, "task:edit")) return;
-
-  const taskId = String(formData.get("taskId") || "");
-  const task = await prisma.task.findUnique({ where: { id: taskId } });
-  if (!task) return;
-
-  const leaderId = String(formData.get("leaderId") || "").trim() || null;
-  const memberIds = collectMemberIds(formData, leaderId);
-
-  let assigneeId: string | null = null;
-  if (leaderId) {
-    const leader = await prisma.user.findUnique({ where: { id: leaderId } });
-    if (leader) {
-      assigneeId = leader.id;
-      await ensureProjectMember(task.projectId, leader.id, leader.role);
+  try {
+    const session = await requireSession();
+    if (!can(session.user.role, "task:assign") && !can(session.user.role, "task:edit")) {
+      return { ok: false as const, error: "You do not have permission to update task staffing." };
     }
-  }
 
-  for (const memberId of memberIds) {
-    const member = await prisma.user.findUnique({ where: { id: memberId } });
-    if (member) {
-      await ensureProjectMember(task.projectId, member.id, member.role);
+    const taskId = String(formData.get("taskId") || "");
+    const task = await prisma.task.findUnique({ where: { id: taskId } });
+    if (!task) {
+      return { ok: false as const, error: "Task not found." };
     }
-  }
 
-  await prisma.task.update({
-    where: { id: taskId },
-    data: {
-      assigneeId,
-      leaderSignedOffAt: assigneeId !== task.assigneeId ? null : task.leaderSignedOffAt,
-    },
-  });
-  await prisma.taskMember.deleteMany({ where: { taskId } });
-  if (memberIds.length) {
-    await prisma.taskMember.createMany({
-      data: memberIds.map((userId) => ({ taskId, userId })),
-      skipDuplicates: true,
+    const leaderId = String(formData.get("leaderId") || "").trim() || null;
+    const memberIds = collectMemberIds(formData, leaderId);
+
+    let assigneeId: string | null = null;
+    let leaderLabel = "Unassigned";
+    if (leaderId) {
+      const leader = await prisma.user.findUnique({ where: { id: leaderId } });
+      if (leader) {
+        assigneeId = leader.id;
+        leaderLabel = leader.name;
+        await ensureProjectMember(task.projectId, leader.id, leader.role);
+      }
+    }
+
+    for (const memberId of memberIds) {
+      const member = await prisma.user.findUnique({ where: { id: memberId } });
+      if (member) {
+        await ensureProjectMember(task.projectId, member.id, member.role);
+      }
+    }
+
+    await prisma.task.update({
+      where: { id: taskId },
+      data: {
+        assigneeId,
+        leaderSignedOffAt: assigneeId !== task.assigneeId ? null : task.leaderSignedOffAt,
+      },
     });
-  }
+    await prisma.taskMember.deleteMany({ where: { taskId } });
+    if (memberIds.length) {
+      await prisma.taskMember.createMany({
+        data: memberIds.map((userId) => ({ taskId, userId })),
+        skipDuplicates: true,
+      });
+    }
 
-  revalidatePath(`/projects/${task.projectId}`);
-  revalidatePath("/my-work");
-  redirect(`/projects/${task.projectId}?staffing=saved`);
+    revalidatePath(`/projects/${task.projectId}`);
+    revalidatePath("/my-work");
+    return {
+      ok: true as const,
+      taskId,
+      leaderLabel,
+      memberCount: memberIds.length,
+    };
+  } catch (e) {
+    console.error("updateTaskStaffingAction failed", e);
+    return { ok: false as const, error: "Could not save staffing. Please try again." };
+  }
 }
 
 /** Task leader (or admin/PM with edit) posts a progress update. */

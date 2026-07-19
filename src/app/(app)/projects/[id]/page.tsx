@@ -8,11 +8,11 @@ import {
   createTaskAction,
   postTaskUpdateAction,
   signOffTaskAction,
-  updateTaskStaffingAction,
   updateTaskStatusAction,
 } from "@/app/actions";
 import { ProjectTabs } from "@/components/project-tabs";
 import { DueDateField } from "@/components/due-date-field";
+import { TaskStaffingForm } from "@/components/task-staffing-form";
 import { TeamMemberPicker } from "@/components/team-member-picker";
 import { Badge, Card, PageHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -25,7 +25,7 @@ export default async function ProjectOverviewPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ status?: string; assignee?: string; staffing?: string }>;
+  searchParams: Promise<{ status?: string; assignee?: string; staffing?: string; task?: string }>;
 }) {
   const session = await requireSession();
   const { id } = await params;
@@ -116,12 +116,6 @@ export default async function ProjectOverviewPage({
 
       <ProjectTabs projectId={project.id} current="" />
 
-      {sp.staffing === "saved" ? (
-        <div className="mb-4 rounded-xl border border-emerald-400/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
-          Task staffing saved — leader and team members updated.
-        </div>
-      ) : null}
-
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -211,36 +205,14 @@ export default async function ProjectOverviewPage({
                         </form>
                       </div>
 
-                      <form
-                        action={updateTaskStaffingAction}
-                        className="space-y-3 rounded-xl border border-cyan-400/25 bg-slate-950/50 p-3"
-                      >
-                        <input type="hidden" name="taskId" value={task.id} />
-                        <div>
-                          <Label htmlFor={`leader-${task.id}`}>Task leader</Label>
-                          <Select
-                            id={`leader-${task.id}`}
-                            name="leaderId"
-                            defaultValue={task.assigneeId ?? ""}
-                          >
-                            <option value="">No task leader</option>
-                            {allUsers.map((u) => (
-                              <option key={u.id} value={u.id}>
-                                {formatUserOption(u)}
-                              </option>
-                            ))}
-                          </Select>
-                        </div>
-                        <TeamMemberPicker
-                          users={allUsers}
-                          excludeIds={task.assigneeId ? [task.assigneeId] : []}
-                          defaultSelectedIds={task.members.map((m) => m.userId)}
-                          label="Team members — add or remove anytime"
-                        />
-                        <Button type="submit" size="sm">
-                          Save leader & team
-                        </Button>
-                      </form>
+                      <TaskStaffingForm
+                        taskId={task.id}
+                        projectId={project.id}
+                        initialLeaderId={task.assigneeId}
+                        initialMemberIds={task.members.map((m) => m.userId)}
+                        users={allUsers}
+                        highlightSaved={sp.staffing === "saved" && sp.task === task.id}
+                      />
 
                       {canLeadActions ? (
                         <div className="grid gap-2 border-t border-slate-800 pt-3">

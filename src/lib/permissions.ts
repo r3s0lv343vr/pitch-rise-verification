@@ -35,7 +35,7 @@ const matrix: Record<Role, Permission[]> = {
     "budget:edit",
     "risk:edit",
   ],
-  MEMBER: ["task:create", "task:edit", "risk:edit"],
+  MEMBER: ["task:create", "task:edit", "task:assign", "risk:edit"],
   VIEWER: [],
 };
 
