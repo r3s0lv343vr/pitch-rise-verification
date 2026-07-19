@@ -1,8 +1,15 @@
 # Deploy checklist (student)
 
-## 1) Create the preferred public app repo
-1. On GitHub (logged in as `r3s0lv343vr`): **New repository** → name `pm-r3s0lv343vr` → Public → MIT → create (empty, no README if possible).
-2. Push this branch’s code there:
+## 1) Canonical public app repo
+Public repo is live: https://github.com/r3s0lv343vr/pm-r3s0lv343vr (`main`).
+
+To republish a clean app-only tree from this workspace:
+
+```bash
+./scripts/publish-clean-app-repo.sh
+```
+
+Historical export / one-time push notes:
 
 ```bash
 git clone -b agent/pm-platform-phase1 https://github.com/r3s0lv343vr/pitch-rise-verification.git pm-tmp

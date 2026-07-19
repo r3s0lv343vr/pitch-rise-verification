@@ -11,17 +11,19 @@ rm -rf "$DEST"
 mkdir -p "$DEST"
 
 # Copy app sources only — exclude Pitch Rise ballot artifacts and local junk.
-rsync -a \
-  --exclude '.git/' \
-  --exclude 'node_modules/' \
-  --exclude '.next/' \
-  --exclude '.vercel/' \
-  --exclude '.env' \
-  --exclude '.env.*' \
-  --exclude 'PUBLIC_URL.txt' \
-  --exclude 'verifications/' \
-  --exclude 'docs/pitch-rise-verification/' \
-  "$ROOT/" "$DEST/"
+tar -C "$ROOT" \
+  --exclude='.git' \
+  --exclude='node_modules' \
+  --exclude='.next' \
+  --exclude='.vercel' \
+  --exclude='.env' \
+  --exclude='.env.local' \
+  --exclude='PUBLIC_URL.txt' \
+  --exclude='verifications' \
+  --exclude='docs/pitch-rise-verification' \
+  --exclude='*.tsbuildinfo' \
+  -cf - . | tar -C "$DEST" -xf -
+rm -rf "$DEST/verifications" "$DEST/docs/pitch-rise-verification" 2>/dev/null || true
 
 # Drop historical Pitch Rise note from the clean README export if a stub remains.
 if [[ -d "$DEST/docs/pitch-rise-verification" ]]; then
