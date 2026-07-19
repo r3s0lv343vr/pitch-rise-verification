@@ -5,11 +5,14 @@ import {
   PROCESS_MILESTONES,
   PROCESS_PHASES,
 } from "../src/lib/process-template";
+import { skillsForSeedUser } from "../src/lib/skills";
 
 const prisma = new PrismaClient();
 
 async function main() {
   await prisma.timeEntry.deleteMany();
+  await prisma.taskUpdate.deleteMany();
+  await prisma.taskMember.deleteMany();
   await prisma.taskDependency.deleteMany();
   await prisma.task.deleteMany();
   await prisma.milestone.deleteMany();
@@ -34,6 +37,7 @@ async function main() {
       name: "Alex Admin",
       passwordHash,
       role: Role.ADMIN,
+      skills: skillsForSeedUser({ username: "admin", role: Role.ADMIN }),
     },
   });
 
@@ -44,6 +48,7 @@ async function main() {
       name: "Priya Manager",
       passwordHash,
       role: Role.PM,
+      skills: skillsForSeedUser({ username: "priya-pm", role: Role.PM }),
     },
   });
 
@@ -54,6 +59,7 @@ async function main() {
       name: "Marcus Member",
       passwordHash,
       role: Role.MEMBER,
+      skills: skillsForSeedUser({ username: "marcus-dev", role: Role.MEMBER }),
     },
   });
 
@@ -64,6 +70,7 @@ async function main() {
       name: "Vicky Viewer",
       passwordHash,
       role: Role.VIEWER,
+      skills: skillsForSeedUser({ username: "vicky-view", role: Role.VIEWER }),
     },
   });
 
@@ -74,6 +81,7 @@ async function main() {
       name: "Staff Reviewer",
       passwordHash,
       role: Role.ADMIN,
+      skills: skillsForSeedUser({ username: "staff-review", role: Role.ADMIN }),
     },
   });
 
@@ -84,6 +92,7 @@ async function main() {
       name: "Randall Chen",
       passwordHash,
       role: Role.MEMBER,
+      skills: skillsForSeedUser({ username: "randall", role: Role.MEMBER }),
     },
   });
 
@@ -94,19 +103,22 @@ async function main() {
       name: "Alpha Rivera",
       passwordHash,
       role: Role.MEMBER,
+      skills: skillsForSeedUser({ username: "alpha", role: Role.MEMBER }),
     },
   });
 
   // Extra accounts so the roster clearly supports a 30+ cohort
   const cohort = [];
   for (let i = 1; i <= 26; i++) {
+    const role = i % 5 === 0 ? Role.PM : Role.MEMBER;
     const u = await prisma.user.create({
       data: {
         email: `student${i}@hult-cohort.test`,
         username: `student${i}`,
         name: `Student ${i}`,
         passwordHash,
-        role: i % 5 === 0 ? Role.PM : Role.MEMBER,
+        role,
+        skills: skillsForSeedUser({ username: `student${i}`, role, index: i }),
       },
     });
     cohort.push(u);

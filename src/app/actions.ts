@@ -14,6 +14,9 @@ export {
   updateTaskStatusAction,
   setTaskStatus,
   assignTaskAction,
+  updateTaskMembersAction,
+  postTaskUpdateAction,
+  signOffTaskAction,
 } from "@/server/actions/tasks";
 export { clockInAction, clockOutAction } from "@/server/actions/time";
 export {

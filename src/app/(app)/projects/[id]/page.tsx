@@ -7,12 +7,17 @@ import {
   archiveProjectAction,
   createMilestoneAction,
   createTaskAction,
+  postTaskUpdateAction,
+  signOffTaskAction,
+  updateTaskMembersAction,
   updateTaskStatusAction,
 } from "@/app/actions";
 import { ProjectTabs } from "@/components/project-tabs";
+import { DueDateField } from "@/components/due-date-field";
 import { Badge, Card, PageHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Select, Textarea } from "@/components/ui/form";
+import { formatUserOption } from "@/lib/skills";
 import { formatCurrency, formatDate, taskStatusColors, taskStatusLabel } from "@/lib/utils";
 
 export default async function ProjectOverviewPage({
@@ -34,19 +39,41 @@ export default async function ProjectOverviewPage({
       phases: { orderBy: { order: "asc" } },
       milestones: { orderBy: { order: "asc" } },
       tasks: {
-        include: { assignee: true, dependencies: true },
+        include: {
+          assignee: true,
+          members: { include: { user: true }, orderBy: { createdAt: "asc" } },
+          updates: { include: { author: true }, orderBy: { createdAt: "desc" }, take: 3 },
+          dependencies: true,
+        },
         orderBy: { createdAt: "desc" },
         where: {
           ...(sp.status ? { status: sp.status as never } : {}),
           ...(sp.assignee
             ? {
-                assignee: {
-                  OR: [
-                    { email: { contains: sp.assignee, mode: "insensitive" } },
-                    { username: { contains: sp.assignee, mode: "insensitive" } },
-                    { name: { contains: sp.assignee, mode: "insensitive" } },
-                  ],
-                },
+                OR: [
+                  {
+                    assignee: {
+                      OR: [
+                        { email: { contains: sp.assignee, mode: "insensitive" } },
+                        { username: { contains: sp.assignee, mode: "insensitive" } },
+                        { name: { contains: sp.assignee, mode: "insensitive" } },
+                      ],
+                    },
+                  },
+                  {
+                    members: {
+                      some: {
+                        user: {
+                          OR: [
+                            { email: { contains: sp.assignee, mode: "insensitive" } },
+                            { username: { contains: sp.assignee, mode: "insensitive" } },
+                            { name: { contains: sp.assignee, mode: "insensitive" } },
+                          ],
+                        },
+                      },
+                    },
+                  },
+                ],
               }
             : {}),
         },
@@ -56,9 +83,9 @@ export default async function ProjectOverviewPage({
   if (!project) notFound();
 
   const allUsers = await prisma.user.findMany({
-    select: { id: true, email: true, username: true, name: true },
+    select: { id: true, email: true, username: true, name: true, skills: true, role: true },
     orderBy: { name: "asc" },
-    take: 100,
+    take: 200,
   });
 
   const canEdit = can(session.user.role, "task:create");
@@ -95,7 +122,7 @@ export default async function ProjectOverviewPage({
             <h2 className="text-lg font-medium text-white">Tasks</h2>
             <form className="flex flex-wrap gap-2">
               <Input name="status" placeholder="Filter status e.g. TODO" defaultValue={sp.status} className="w-40" />
-              <Input name="assignee" placeholder="Filter assignee" defaultValue={sp.assignee} className="w-40" />
+              <Input name="assignee" placeholder="Filter leader/member" defaultValue={sp.assignee} className="w-44" />
               <Button type="submit" variant="secondary" size="sm">
                 Apply
               </Button>
@@ -103,46 +130,145 @@ export default async function ProjectOverviewPage({
           </div>
 
           <div className="space-y-3">
-            {project.tasks.map((task) => (
-              <div key={task.id} className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <div className="font-medium text-white">{task.title}</div>
-                    <p className="mt-1 text-sm text-slate-400">{task.description || "—"}</p>
+            {project.tasks.map((task) => {
+              const isLeader = task.assigneeId === session.user.id;
+              const canLeadActions = isLeader || session.user.role === "ADMIN" || session.user.role === "PM";
+              return (
+                <div key={task.id} className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <div className="font-medium text-white">{task.title}</div>
+                      <p className="mt-1 text-sm text-slate-400">{task.description || "—"}</p>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      <Badge className={taskStatusColors[task.status]}>{taskStatusLabel[task.status]}</Badge>
+                      {task.leaderSignedOffAt ? (
+                        <Badge className="bg-emerald-500/15 text-emerald-200">Leader signed off</Badge>
+                      ) : null}
+                    </div>
                   </div>
-                  <Badge className={taskStatusColors[task.status]}>{taskStatusLabel[task.status]}</Badge>
-                </div>
-                <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-500">
-                  <span>Assignee: {task.assignee?.name ?? "Unassigned"}</span>
-                  <span>Due: {formatDate(task.dueDate)}</span>
-                  <span>Deps: {task.dependencies.length}</span>
-                </div>
-                {canEdit ? (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <form action={updateTaskStatusAction} className="flex gap-2">
-                      <input type="hidden" name="taskId" value={task.id} />
-                      <Select name="status" defaultValue={task.status} className="w-40">
-                        {Object.keys(taskStatusLabel).map((s) => (
-                          <option key={s} value={s}>
-                            {taskStatusLabel[s]}
-                          </option>
-                        ))}
-                      </Select>
-                      <Button type="submit" size="sm" variant="secondary">
-                        Update status
-                      </Button>
-                    </form>
-                    <form action={assignTaskAction} className="flex gap-2">
-                      <input type="hidden" name="taskId" value={task.id} />
-                      <Input name="assignee" placeholder="email or username" className="w-48" />
-                      <Button type="submit" size="sm" variant="secondary">
-                        Assign
-                      </Button>
-                    </form>
+                  <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-500">
+                    <span>
+                      Leader: {task.assignee?.name ?? "Unassigned"}
+                      {task.assignee?.skills ? ` · ${task.assignee.skills}` : ""}
+                    </span>
+                    <span>
+                      Team:{" "}
+                      {task.members.length
+                        ? task.members.map((m) => m.user.name).join(", ")
+                        : "No additional members"}
+                    </span>
+                    <span>Due: {formatDate(task.dueDate)}</span>
+                    <span>Deps: {task.dependencies.length}</span>
                   </div>
-                ) : null}
-              </div>
-            ))}
+
+                  {task.updates.length ? (
+                    <div className="mt-3 space-y-1 rounded-lg border border-slate-800/80 bg-slate-900/50 p-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                        Recent leader updates
+                      </div>
+                      {task.updates.map((u) => (
+                        <div key={u.id} className="text-xs text-slate-300">
+                          <span className="text-cyan-300/90">
+                            {u.kind === "SIGN_OFF" ? "Sign-off" : "Update"}
+                          </span>{" "}
+                          · {u.author.name}: {u.body}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {canEdit ? (
+                    <div className="mt-3 space-y-3">
+                      <div className="flex flex-wrap gap-2">
+                        <form action={updateTaskStatusAction} className="flex gap-2">
+                          <input type="hidden" name="taskId" value={task.id} />
+                          <Select name="status" defaultValue={task.status} className="w-40">
+                            {Object.keys(taskStatusLabel).map((s) => (
+                              <option key={s} value={s}>
+                                {taskStatusLabel[s]}
+                              </option>
+                            ))}
+                          </Select>
+                          <Button type="submit" size="sm" variant="secondary">
+                            Update status
+                          </Button>
+                        </form>
+                      </div>
+
+                      <form action={assignTaskAction} className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                        <input type="hidden" name="taskId" value={task.id} />
+                        <Select name="leaderId" defaultValue={task.assigneeId ?? ""}>
+                          <option value="">No task leader</option>
+                          {allUsers.map((u) => (
+                            <option key={u.id} value={u.id}>
+                              {formatUserOption(u)}
+                            </option>
+                          ))}
+                        </Select>
+                        <Button type="submit" size="sm" variant="secondary">
+                          Set leader
+                        </Button>
+                      </form>
+
+                      <form action={updateTaskMembersAction} className="space-y-2">
+                        <input type="hidden" name="taskId" value={task.id} />
+                        <Label htmlFor={`members-${task.id}`}>Team members (multi-select)</Label>
+                        <select
+                          id={`members-${task.id}`}
+                          name="memberIds"
+                          multiple
+                          defaultValue={task.members.map((m) => m.userId)}
+                          className="h-36 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-400"
+                        >
+                          {allUsers
+                            .filter((u) => u.id !== task.assigneeId)
+                            .map((u) => (
+                              <option key={u.id} value={u.id}>
+                                {formatUserOption(u)}
+                              </option>
+                            ))}
+                        </select>
+                        <p className="text-[11px] text-slate-500">Hold Ctrl/Cmd to select multiple people.</p>
+                        <Button type="submit" size="sm" variant="secondary">
+                          Save team
+                        </Button>
+                      </form>
+
+                      {canLeadActions ? (
+                        <div className="grid gap-2 border-t border-slate-800 pt-3">
+                          <form action={postTaskUpdateAction} className="space-y-2">
+                            <input type="hidden" name="taskId" value={task.id} />
+                            <Label htmlFor={`update-${task.id}`}>Leader update</Label>
+                            <Textarea
+                              id={`update-${task.id}`}
+                              name="body"
+                              rows={2}
+                              placeholder="Progress note for the team…"
+                              required
+                            />
+                            <Button type="submit" size="sm">
+                              Post update
+                            </Button>
+                          </form>
+                          <form action={signOffTaskAction} className="space-y-2">
+                            <input type="hidden" name="taskId" value={task.id} />
+                            <Input
+                              name="body"
+                              placeholder="Optional sign-off note"
+                              defaultValue="Leader sign-off — ready for review"
+                            />
+                            <Button type="submit" size="sm" variant="secondary">
+                              Leader sign-off
+                            </Button>
+                          </form>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
             {project.tasks.length === 0 ? <p className="text-sm text-slate-500">No tasks match these filters.</p> : null}
           </div>
         </Card>
@@ -172,15 +298,33 @@ export default async function ProjectOverviewPage({
                   </Select>
                 </div>
                 <div>
-                  <Label htmlFor="assignee">Assignee (email or username)</Label>
-                  <Input id="assignee" name="assignee" list="cohort-users" placeholder="student1 or email" />
-                  <datalist id="cohort-users">
+                  <Label htmlFor="leaderId">Task leader</Label>
+                  <Select id="leaderId" name="leaderId" defaultValue="">
+                    <option value="">Unassigned</option>
                     {allUsers.map((u) => (
-                      <option key={u.id} value={u.email}>
-                        {u.username}
+                      <option key={u.id} value={u.id}>
+                        {formatUserOption(u)}
                       </option>
                     ))}
-                  </datalist>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="memberIds">Team members</Label>
+                  <select
+                    id="memberIds"
+                    name="memberIds"
+                    multiple
+                    className="h-40 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-400"
+                  >
+                    {allUsers.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {formatUserOption(u)}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    Dropdown shows name + skills. Hold Ctrl/Cmd to add multiple teammates.
+                  </p>
                 </div>
                 <div>
                   <Label htmlFor="milestoneId">Milestone</Label>
@@ -204,10 +348,7 @@ export default async function ProjectOverviewPage({
                     ))}
                   </Select>
                 </div>
-                <div>
-                  <Label htmlFor="dueDate">Due date</Label>
-                  <Input id="dueDate" name="dueDate" type="date" />
-                </div>
+                <DueDateField />
                 <Button type="submit" className="w-full">
                   Add task
                 </Button>
@@ -240,7 +381,7 @@ export default async function ProjectOverviewPage({
                     </option>
                   ))}
                 </Select>
-                <Input name="dueDate" type="date" />
+                <DueDateField id="milestoneDueDate" name="dueDate" label="Due date" />
                 <Button type="submit" variant="secondary" className="w-full">
                   Add milestone
                 </Button>
