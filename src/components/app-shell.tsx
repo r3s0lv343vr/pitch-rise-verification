@@ -22,6 +22,7 @@ import {
   CalendarRange,
   Home,
   Compass,
+  FlaskConical,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { roleLabel } from "@/lib/permissions";
@@ -36,6 +37,7 @@ const commandCenterViews = [
   { tab: "main", label: "Overview", icon: Home },
   { tab: "kanban", label: "Kanban", icon: Columns3 },
   { tab: "process", label: "Process Workflow Map", icon: Map },
+  { tab: "twin", label: "Digital Twin", icon: FlaskConical },
   { tab: "gantt", label: "Gantt Chart-Calendar", icon: CalendarRange },
 ];
 

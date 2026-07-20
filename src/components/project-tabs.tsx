@@ -5,6 +5,7 @@ const tabs = [
   { slug: "kanban", label: "Kanban" },
   { slug: "gantt", label: "Gantt" },
   { slug: "map", label: "Project map" },
+  { slug: "twin", label: "Digital Twin" },
   { slug: "budget", label: "Budget" },
   { slug: "risks", label: "Risks & changes" },
 ] as const;

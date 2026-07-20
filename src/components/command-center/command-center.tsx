@@ -8,6 +8,7 @@ import { SwimlaneProcessMap } from "@/components/command-center/swimlane-process
 import { LinkedKanban } from "@/components/command-center/linked-kanban";
 import { GanttCalendar } from "@/components/command-center/gantt-calendar";
 import { OverviewPanel } from "@/components/command-center/overview-panel";
+import { DigitalTwinPanel } from "@/components/digital-twin/digital-twin-panel";
 import { cn } from "@/lib/utils";
 import type { LinkedTaskNode, TaskStatusValue } from "@/lib/command-center-types";
 import {
@@ -22,6 +23,7 @@ export const commandCenterTabs = [
   { id: "main", label: "Overview" },
   { id: "kanban", label: "Kanban" },
   { id: "process", label: "Process Workflow Map" },
+  { id: "twin", label: "Digital Twin" },
   { id: "gantt", label: "Gantt Chart-Calendar" },
 ] as const;
 
@@ -44,6 +46,7 @@ export function CommandCenter({
   overview,
   selectedProjectId = null,
   selectedProjectName = null,
+  overallBudget = 0,
 }: {
   initialNodes: LinkedTaskNode[];
   canEdit: boolean;
@@ -51,6 +54,7 @@ export function CommandCenter({
   overview: CommandCenterOverview;
   selectedProjectId?: string | null;
   selectedProjectName?: string | null;
+  overallBudget?: number;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -98,7 +102,7 @@ export function CommandCenter({
       if (opts.projectId) params.set("project", opts.projectId);
       else params.delete("project");
     } else if (
-      (next === "process" || next === "kanban" || next === "gantt") &&
+      (next === "process" || next === "kanban" || next === "gantt" || next === "twin") &&
       !params.get("project") &&
       overview.projects[0]
     ) {
@@ -130,7 +134,7 @@ export function CommandCenter({
     });
   }
 
-  const linkedView = tab === "process" || tab === "kanban" || tab === "gantt";
+  const linkedView = tab === "process" || tab === "kanban" || tab === "gantt" || tab === "twin";
 
   return (
     <div className="flex min-h-[calc(100vh-4.25rem)] flex-col">
@@ -242,6 +246,23 @@ export function CommandCenter({
                 onStatusChange={handleStatusChange}
                 focusTaskId={focusTaskId}
               />
+            )}
+          </div>
+        ) : null}
+
+        {tab === "twin" ? (
+          <div className="h-full min-h-[calc(100vh-8rem)] overflow-auto pb-6">
+            {activeProjectId ? (
+              <DigitalTwinPanel
+                projectId={activeProjectId}
+                projectName={selectedProjectName || "Selected project"}
+                liveNodes={viewNodes}
+                overallBudget={overallBudget}
+              />
+            ) : (
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6 text-sm text-slate-300">
+                Select a project to open its Digital Twin sandbox.
+              </div>
             )}
           </div>
         ) : null}

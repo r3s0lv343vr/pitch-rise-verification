@@ -15,7 +15,11 @@ export default async function DashboardPage({
   const session = await requireSession();
   const sp = await searchParams;
   const initialTab =
-    sp.tab === "kanban" || sp.tab === "gantt" || sp.tab === "process" || sp.tab === "main"
+    sp.tab === "kanban" ||
+    sp.tab === "gantt" ||
+    sp.tab === "process" ||
+    sp.tab === "twin" ||
+    sp.tab === "main"
       ? sp.tab
       : "main";
 
@@ -26,9 +30,12 @@ export default async function DashboardPage({
     take: 50,
   });
 
-  // Process / Kanban / Gantt in Command Center are single-project views.
-  // Default to the most recently updated project when none is selected.
-  const linkedView = initialTab === "process" || initialTab === "kanban" || initialTab === "gantt";
+  // Process / Kanban / Gantt / Digital Twin in Command Center are single-project views.
+  const linkedView =
+    initialTab === "process" ||
+    initialTab === "kanban" ||
+    initialTab === "gantt" ||
+    initialTab === "twin";
   if (linkedView && !sp.project && projects[0]) {
     const params = new URLSearchParams();
     params.set("tab", initialTab);
@@ -175,6 +182,7 @@ export default async function DashboardPage({
       initialTab={initialTab}
       selectedProjectId={selectedProjectId}
       selectedProjectName={selectedProject?.name ?? null}
+      overallBudget={selectedProject?.overallBudget ?? 0}
       overview={{
         seed,
         projects: projects.map((p) => ({
