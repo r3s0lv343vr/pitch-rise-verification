@@ -12,7 +12,14 @@ export default async function AuthenticatedLayout({ children }: { children: Reac
       }
     >
       <WalkthroughProvider>
-        <AppShell user={{ name: session.user.name, email: session.user.email, role: session.user.role }}>
+        <AppShell
+          user={{
+            id: session.user.id,
+            name: session.user.name,
+            email: session.user.email,
+            role: session.user.role,
+          }}
+        >
           {children}
         </AppShell>
       </WalkthroughProvider>

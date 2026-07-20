@@ -96,6 +96,7 @@ model User {
   ownedChanges     ChangeRequest[] @relation("ChangeOwner")
   resourceAllocs   ResourceAllocation[]
   timeEntries      TimeEntry[]
+  projectMessages  ProjectMessage[]
 }
 
 model Organization {
@@ -134,9 +135,24 @@ model Project {
   changes     ChangeRequest[]
   allocations ResourceAllocation[]
   timeEntries TimeEntry[]
+  messages    ProjectMessage[]
 
   @@index([ownerId])
   @@index([status])
+}
+
+/// Project-scoped team chat (members, leaders, PMs — all roles).
+model ProjectMessage {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([projectId, createdAt])
+  @@index([authorId])
 }
 
 model ProjectMember {

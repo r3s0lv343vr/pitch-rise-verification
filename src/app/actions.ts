@@ -33,4 +33,9 @@ export {
   updateBudgetAction,
   updateMilestoneBudgetAction,
 } from "@/server/actions/project-meta";
+export {
+  listProjectMessagesAction,
+  sendProjectMessageAction,
+  getProjectChatMetaAction,
+} from "@/server/actions/chat";
 export { toggleIntegrationAction, ensureIntegrationsAction } from "@/server/actions/integrations";

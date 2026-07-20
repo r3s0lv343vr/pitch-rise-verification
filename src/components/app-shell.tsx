@@ -30,6 +30,7 @@ import { useWalkthrough } from "@/components/walkthrough/walkthrough-context";
 import { BeginnerWalkthrough } from "@/components/walkthrough/beginner-walkthrough";
 import { TopNav } from "@/components/top-nav";
 import { ProjectSubnav } from "@/components/project-subnav";
+import { ProjectChatDock } from "@/components/project-chat-dock";
 
 const commandCenterViews = [
   { tab: "main", label: "Overview", icon: Home },
@@ -52,7 +53,7 @@ export function AppShell({
   user,
 }: {
   children: React.ReactNode;
-  user: { name: string; email: string; role: Role };
+  user: { id: string; name: string; email: string; role: Role };
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -253,6 +254,7 @@ export function AppShell({
       ) : null}
 
       <main className="w-full px-3 py-3 sm:px-4 sm:py-3 lg:px-5">{children}</main>
+      <ProjectChatDock user={{ id: user.id, name: user.name, role: user.role }} />
       <BeginnerWalkthrough />
     </div>
   );
